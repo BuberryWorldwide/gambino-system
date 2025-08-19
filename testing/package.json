@@ -1,0 +1,8 @@
+{
+  "name": "gambino-testing",
+  "version": "1.0.0",
+  "scripts": {
+    "simulate": "node gambino-testing.js"
+  },
+  "dependencies": {}
+}

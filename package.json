@@ -1,0 +1,21 @@
+{
+  "name": "gambino-system",
+  "version": "1.0.0",
+  "description": "Gambino Coin - Luck Mining System",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "testing"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "test:simulation": "cd testing && npm run simulate",
+    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install && cd ../testing && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
