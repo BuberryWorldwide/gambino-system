@@ -26,7 +26,15 @@ export default function Home() {
         }}>
           Farm Luck. Mine Destiny.
         </p>
-        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+        
+        {/* Main Action Buttons */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '1rem', 
+          justifyContent: 'center', 
+          flexWrap: 'wrap',
+          marginBottom: '2rem'
+        }}>
           <Link 
             href="/onboard"
             style={{
@@ -36,22 +44,79 @@ export default function Home() {
               borderRadius: '0.5rem',
               fontWeight: 'bold',
               textDecoration: 'none',
-              display: 'inline-block'
+              display: 'inline-block',
+              transition: 'all 0.3s ease'
             }}
           >
             Get Started
           </Link>
-          <button style={{
-            border: '2px solid #FFD700',
-            color: '#FFD700',
-            backgroundColor: 'transparent',
-            padding: '1rem 2rem',
-            borderRadius: '0.5rem',
-            fontWeight: 'bold',
-            cursor: 'pointer'
-          }}>
-            Learn More
-          </button>
+          
+          <Link 
+            href="/login"
+            style={{
+              border: '2px solid #FFD700',
+              color: '#FFD700',
+              backgroundColor: 'transparent',
+              padding: '1rem 2rem',
+              borderRadius: '0.5rem',
+              fontWeight: 'bold',
+              textDecoration: 'none',
+              display: 'inline-block',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            Login
+          </Link>
+        </div>
+
+        {/* Secondary Actions */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '1rem', 
+          justifyContent: 'center', 
+          flexWrap: 'wrap'
+        }}>
+          <Link 
+            href="/leaderboard"
+            style={{
+              color: '#9CA3AF',
+              textDecoration: 'none',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              borderRadius: '0.25rem',
+              transition: 'color 0.3s ease'
+            }}
+          >
+            📊 Leaderboard
+          </Link>
+          
+          <Link 
+            href="/about"
+            style={{
+              color: '#9CA3AF',
+              textDecoration: 'none',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              borderRadius: '0.25rem',
+              transition: 'color 0.3s ease'
+            }}
+          >
+            ℹ️ Learn More
+          </Link>
+
+          <Link 
+            href="/admin"
+            style={{
+              color: '#6B7280',
+              textDecoration: 'none',
+              padding: '0.5rem 1rem',
+              fontSize: '0.8rem',
+              borderRadius: '0.25rem',
+              transition: 'color 0.3s ease'
+            }}
+          >
+            🔧 Admin
+          </Link>
         </div>
       </div>
     </div>
