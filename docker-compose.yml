@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: gambino_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: gambinouser
+      MONGO_INITDB_ROOT_PASSWORD: jhI+PDopCbhL/uAwniiKU2DSQX6Rv8LEXR5smWQZfIU=
+      MONGO_INITDB_DATABASE: gambino
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    networks:
+      - gambino_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: gambino_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - gambino_network
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  gambino_network:
+    driver: bridge

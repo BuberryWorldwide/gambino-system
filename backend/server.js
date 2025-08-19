@@ -26,7 +26,7 @@ app.use(limiter);
 
 // CORS and JSON parsing
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || 'http://192.168.1.235:3000',
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));

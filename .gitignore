@@ -21,3 +21,25 @@ testing/gambino_data/
 # IDE & OS
 .vscode/
 .DS_Store
+
+# Build files and cache
+frontend/.next/
+frontend/build/
+backend/build/
+backend/dist/
+
+# Logs
+logs/
+*.log
+
+# Environment files
+backend/.env
+frontend/.env.local
+frontend/.env.production
+
+# PM2
+.pm2/
+
+# Docker
+mongodb_data/
+redis_data/

@@ -52,7 +52,7 @@ const EnhancedOnboardingPage = () => {
     setError('');
     
     try {
-      const response = await fetch('http://localhost:3001/api/onboarding/step1', {
+      const response = await fetch(process.env.NEXT_PUBLIC_API_URL + '/api/onboarding/step1', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -97,7 +97,7 @@ const EnhancedOnboardingPage = () => {
     setError('');
     
     try {
-      const response = await fetch('http://localhost:3001/api/onboarding/step2', {
+      const response = await fetch(process.env.NEXT_PUBLIC_API_URL + '/api/onboarding/step2', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -132,7 +132,7 @@ const EnhancedOnboardingPage = () => {
     setError('');
     
     try {
-      const response = await fetch('http://localhost:3001/api/onboarding/step3', {
+      const response = await fetch(process.env.NEXT_PUBLIC_API_URL + '/api/onboarding/step3', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
