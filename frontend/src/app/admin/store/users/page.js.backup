@@ -5,54 +5,29 @@ export default function AdminPage() {
   const [token, setToken] = useState('');
   const [admin, setAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState(null);
 
   useEffect(() => {
     const adminToken = localStorage.getItem('adminToken');
     const adminData = localStorage.getItem('adminData');
-
+    
     if (adminToken && adminData) {
       setToken(adminToken);
-      setAdmin(JSON.parse(adminData));
-      loadDashboardData(adminToken, JSON.parse(adminData));
+      const parsedAdmin = JSON.parse(adminData);
+      setAdmin(parsedAdmin);
+      
+      // Mock some sample users for display
+      if (parsedAdmin.role !== 'super_admin') {
+        setUsers([
+          { email: 'customer1@example.com', gambinoBalance: 1500, tier: 'Gold' },
+          { email: 'customer2@example.com', gambinoBalance: 800, tier: 'Silver' },
+          { email: 'customer3@example.com', gambinoBalance: 2200, tier: 'Platinum' }
+        ]);
+      }
     }
     setLoading(false);
   }, []);
-
-  const loadDashboardData = async (token, adminData) => {
-    try {
-      // Load basic stats
-      const statsResponse = await fetch('http://192.168.1.235:3001/api/admin/metrics?timeframe=7d', {
-        headers: { 'admin-key': 'admin123' }
-      });
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setStats(statsData.data);
-      }
-
-      // Load users (filtered by role)
-      // Store owners/managers should only see their store's users
-      // This would be implemented in the backend, for now we'll mock it
-      const mockUsers = [
-        {
-          email: 'user1@store.com',
-          gambinoBalance: 25000,
-          tier: 'tier2',
-          storeId: adminData.role === 'super_admin' ? 'all' : 'elevated_main'
-        },
-        {
-          email: 'user2@store.com',
-          gambinoBalance: 15000,
-          tier: 'tier1',
-          storeId: adminData.role === 'super_admin' ? 'all' : 'elevated_main'
-        }
-      ];
-      setUsers(mockUsers);
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-    }
-  };
 
   const logout = () => {
     localStorage.removeItem('adminToken');
@@ -91,48 +66,47 @@ export default function AdminPage() {
             <div className="flex items-center space-x-8">
               <h1 className="text-xl font-bold text-yellow-500">🎲 Gambino Admin</h1>
               <nav className="flex space-x-4">
-                <a
-                  href="/admin"
-                  className="bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium"
+                <a 
+                  href="/admin" 
+                  className="text-white px-3 py-2 rounded-md text-sm font-medium"
                 >
                   Dashboard
                 </a>
-                <a
-                  href="/admin/settings"
+                <a 
+                  href="/admin/settings" 
                   className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
                 >
                   Settings
                 </a>
-                {/* Role-based navigation - FIXED ROUTING */}
+                {/* Role-based navigation */}
                 {admin.role === 'super_admin' ? (
-                  <a
-                    href="/admin/users"
-                    className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Manage Users
-                  </a>
-                ) : (admin.role === 'store_owner' || admin.role === 'store_manager') ? (
-                  <a
-                    href="/admin/store/users"
+                  <>
+                    <a 
+                      href="/admin/users" 
+                      className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+                    >
+                      All Users
+                    </a>
+                    <a 
+                      href="/admin/treasury" 
+                      className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+                    >
+                      Treasury
+                    </a>
+                  </>
+                ) : (
+                  <a 
+                    href="/admin/store/users" 
                     className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Store Users
-                  </a>
-                ) : null}
-                {/* Treasury only for super admin */}
-                {admin.role === 'super_admin' && (
-                  <a
-                    href="/admin/treasury"
-                    className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Treasury
                   </a>
                 )}
               </nav>
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-400">
-                {admin.name} ({admin.role?.replace('_', ' ')})
+                {admin.firstName} {admin.lastName} ({admin.role?.replace('_', ' ')})
               </span>
               <button
                 onClick={logout}
@@ -149,8 +123,8 @@ export default function AdminPage() {
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-white">
-            {admin.role === 'super_admin' ? 'System Overview' :
-             admin.role === 'store_owner' ? 'Store Management' :
+            {admin.role === 'super_admin' ? 'System Overview' : 
+             admin.role === 'store_owner' ? 'Store Management' : 
              'Store Dashboard'}
           </h2>
           <p className="text-gray-400 mt-2">
@@ -161,17 +135,13 @@ export default function AdminPage() {
         </div>
 
         {/* Role-based Stats Cards */}
-        {stats && (
+        {admin.role === 'super_admin' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-gray-400 font-semibold text-sm uppercase">
-                    {admin.role === 'super_admin' ? 'Total Users' : 'Store Users'}
-                  </h3>
-                  <p className="text-3xl font-bold text-white mt-2">
-                    {admin.role === 'super_admin' ? stats.newUsers : users.length}
-                  </p>
+                  <h3 className="text-gray-400 font-semibold text-sm uppercase">Total Users</h3>
+                  <p className="text-3xl font-bold text-white mt-2">1,247</p>
                 </div>
                 <div className="text-4xl">👥</div>
               </div>
@@ -180,12 +150,50 @@ export default function AdminPage() {
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-gray-400 font-semibold text-sm uppercase">
-                    {admin.role === 'super_admin' ? 'Total Transactions' : 'Store Transactions'}
-                  </h3>
-                  <p className="text-3xl font-bold text-white mt-2">
-                    {stats.totalTransactions || 0}
-                  </p>
+                  <h3 className="text-gray-400 font-semibold text-sm uppercase">Total Stores</h3>
+                  <p className="text-3xl font-bold text-white mt-2">5</p>
+                </div>
+                <div className="text-4xl">🏪</div>
+              </div>
+            </div>
+
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-gray-400 font-semibold text-sm uppercase">GAMBINO Supply</h3>
+                  <p className="text-3xl font-bold text-yellow-400 mt-2">777M</p>
+                </div>
+                <div className="text-4xl">🎲</div>
+              </div>
+            </div>
+
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-gray-400 font-semibold text-sm uppercase">System Status</h3>
+                  <p className="text-3xl font-bold text-green-400 mt-2">ACTIVE</p>
+                </div>
+                <div className="text-4xl">✅</div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-gray-400 font-semibold text-sm uppercase">Store Users</h3>
+                  <p className="text-3xl font-bold text-white mt-2">{users.length}</p>
+                </div>
+                <div className="text-4xl">👥</div>
+              </div>
+            </div>
+
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-gray-400 font-semibold text-sm uppercase">Store Revenue</h3>
+                  <p className="text-3xl font-bold text-green-400 mt-2">$12.5K</p>
                 </div>
                 <div className="text-4xl">💰</div>
               </div>
@@ -194,21 +202,7 @@ export default function AdminPage() {
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-gray-400 font-semibold text-sm uppercase">Volume (7d)</h3>
-                  <p className="text-3xl font-bold text-white mt-2">
-                    ${stats.totalVolume?.toLocaleString() || '0'}
-                  </p>
-                </div>
-                <div className="text-4xl">📊</div>
-              </div>
-            </div>
-
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-gray-400 font-semibold text-sm uppercase">
-                    {admin.role === 'super_admin' ? 'System Status' : 'Store Status'}
-                  </h3>
+                  <h3 className="text-gray-400 font-semibold text-sm uppercase">Store Status</h3>
                   <p className="text-3xl font-bold text-green-400 mt-2">ACTIVE</p>
                 </div>
                 <div className="text-4xl">✅</div>
@@ -219,7 +213,7 @@ export default function AdminPage() {
 
         {/* Role-based Content */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Quick Actions - Role Based - FIXED ROUTING */}
+          {/* Quick Actions - Role Based */}
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
             <h3 className="text-xl font-bold text-white mb-4">Quick Actions</h3>
             <div className="space-y-3">
@@ -234,42 +228,52 @@ export default function AdminPage() {
                 </div>
               </a>
 
-              {/* Fixed user management routing by role */}
               {admin.role === 'super_admin' ? (
-                <a
-                  href="/admin/users"
-                  className="flex items-center p-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
-                >
-                  <span className="mr-3">👥</span>
-                  <div>
-                    <div className="font-semibold">Manage All Users</div>
-                    <div className="text-sm text-purple-200">System-wide user management</div>
-                  </div>
-                </a>
-              ) : (admin.role === 'store_owner' || admin.role === 'store_manager') ? (
-                <a
-                  href="/admin/store/users"
-                  className="flex items-center p-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
-                >
-                  <span className="mr-3">👥</span>
-                  <div>
-                    <div className="font-semibold">Manage Store Users</div>
-                    <div className="text-sm text-purple-200">Your store's users</div>
-                  </div>
-                </a>
-              ) : null}
-
-              {admin.role === 'super_admin' && (
-                <a
-                  href="/admin/treasury"
-                  className="flex items-center p-3 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-                >
-                  <span className="mr-3">🏦</span>
-                  <div>
-                    <div className="font-semibold">Treasury Management</div>
-                    <div className="text-sm text-green-200">Monitor GAMBINO reserves</div>
-                  </div>
-                </a>
+                <>
+                  <a
+                    href="/admin/users"
+                    className="flex items-center p-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
+                  >
+                    <span className="mr-3">👥</span>
+                    <div>
+                      <div className="font-semibold">Manage All Users</div>
+                      <div className="text-sm text-purple-200">System-wide user management</div>
+                    </div>
+                  </a>
+                  <a
+                    href="/admin/treasury"
+                    className="flex items-center p-3 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+                  >
+                    <span className="mr-3">🏦</span>
+                    <div>
+                      <div className="font-semibold">Treasury Management</div>
+                      <div className="text-sm text-green-200">Monitor GAMBINO reserves</div>
+                    </div>
+                  </a>
+                </>
+              ) : (
+                <>
+                  <a
+                    href="/admin/store/users"
+                    className="flex items-center p-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
+                  >
+                    <span className="mr-3">👥</span>
+                    <div>
+                      <div className="font-semibold">Manage Store Users</div>
+                      <div className="text-sm text-purple-200">Users from {admin.storeName || 'your store'}</div>
+                    </div>
+                  </a>
+                  <a
+                    href="/admin/store/analytics"
+                    className="flex items-center p-3 bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors"
+                  >
+                    <span className="mr-3">📊</span>
+                    <div>
+                      <div className="font-semibold">Store Analytics</div>
+                      <div className="text-sm text-orange-200">Performance metrics</div>
+                    </div>
+                  </a>
+                </>
               )}
             </div>
           </div>
@@ -324,11 +328,9 @@ export default function AdminPage() {
         </div>
 
         {/* Recent Activity (if available) */}
-        {users.length > 0 && (
+        {users.length > 0 && admin.role !== 'super_admin' && (
           <div className="mt-8 bg-gray-800 border border-gray-700 rounded-xl p-6">
-            <h3 className="text-xl font-bold text-white mb-4">
-              {admin.role === 'super_admin' ? 'Recent Users' : 'Store Users'}
-            </h3>
+            <h3 className="text-xl font-bold text-white mb-4">Recent Store Users</h3>
             <div className="space-y-3">
               {users.slice(0, 5).map((user, index) => (
                 <div key={index} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
@@ -342,14 +344,12 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
-            
-            {/* Link to view all users - role-based routing */}
             <div className="mt-4">
               <a
-                href={admin.role === 'super_admin' ? '/admin/users' : '/admin/store/users'}
+                href="/admin/store/users"
                 className="text-blue-400 hover:text-blue-300 text-sm font-medium"
               >
-                View all {admin.role === 'super_admin' ? 'users' : 'store users'} →
+                View all store users →
               </a>
             </div>
           </div>
