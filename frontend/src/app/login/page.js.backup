@@ -11,6 +11,9 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  // Use environment variable for API URL
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
   const handleInputChange = (e) => {
     setFormData({
       ...formData,
@@ -24,7 +27,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch('http://192.168.1.235:3001/api/users/login', {
+      const response = await fetch(`${apiUrl}/api/users/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -35,11 +38,14 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (data.success) {
-        localStorage.setItem('gambino_token', data.token);
-        localStorage.setItem('gambino_user', JSON.stringify(data.user));
-        
+        // Store auth data in localStorage (with browser check)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('gambino_token', data.token);
+          localStorage.setItem('gambino_user', JSON.stringify(data.user));
+        }
+
         setSuccess(true);
-        
+
         setTimeout(() => {
           window.location.href = '/dashboard';
         }, 1500);
@@ -70,7 +76,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white p-4">
       <div className="max-w-md mx-auto">
-        
+
         <div className="text-center mb-8">
           <Link href="/" className="inline-block">
             <h1 className="text-4xl font-bold text-yellow-500 mb-2 hover:text-yellow-400 transition-colors">
@@ -148,7 +154,7 @@ export default function LoginPage() {
                 Get Started
               </Link>
             </div>
-            
+
             <div className="text-gray-500 text-sm">
               <Link href="/forgot-password" className="hover:text-gray-400">
                 Forgot your password?
@@ -158,8 +164,8 @@ export default function LoginPage() {
         </div>
 
         <div className="text-center mt-8">
-          <Link 
-            href="/" 
+          <Link
+            href="/"
             className="text-gray-400 hover:text-white transition-colors text-sm"
           >
             ← Back to Home

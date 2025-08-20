@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Use environment variable for API URL
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -27,7 +28,8 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch(`${apiUrl}/api/users/login`, {
+      // First try regular user login to get user data
+      const userResponse = await fetch(`${apiUrl}/api/users/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -35,22 +37,48 @@ export default function LoginPage() {
         body: JSON.stringify(formData)
       });
 
-      const data = await response.json();
+      const userData = await userResponse.json();
 
-      if (data.success) {
-        // Store auth data in localStorage (with browser check)
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('gambino_token', data.token);
-          localStorage.setItem('gambino_user', JSON.stringify(data.user));
+      if (userData.success) {
+        // Check if user has admin role by trying admin login
+        const adminResponse = await fetch(`${apiUrl}/api/admin/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const adminData = await adminResponse.json();
+
+        if (adminData.success) {
+          // User is an admin - store admin data and redirect to admin panel
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('adminToken', adminData.token);
+            localStorage.setItem('adminData', JSON.stringify(adminData.admin));
+          }
+          
+          setIsAdmin(true);
+          setSuccess(true);
+
+          setTimeout(() => {
+            window.location.href = '/admin';
+          }, 1500);
+        } else {
+          // Regular user - store user data and redirect to dashboard
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('gambino_token', userData.token);
+            localStorage.setItem('gambino_user', JSON.stringify(userData.user));
+          }
+
+          setSuccess(true);
+
+          setTimeout(() => {
+            window.location.href = '/dashboard';
+          }, 1500);
         }
-
-        setSuccess(true);
-
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 1500);
       } else {
-        setError(data.error || 'Login failed');
+        setError(userData.error || 'Login failed');
       }
     } catch (error) {
       setError('Network error. Please try again.');
@@ -65,9 +93,15 @@ export default function LoginPage() {
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center text-white p-4">
         <div className="bg-gray-800 border border-green-500 rounded-xl p-8 text-center max-w-md w-full">
           <div className="text-green-500 text-6xl mb-4">✅</div>
-          <h2 className="text-2xl font-bold text-green-500 mb-4">Welcome Back!</h2>
-          <p className="text-gray-300 mb-4">Login successful. Redirecting to your dashboard...</p>
-          <div className="animate-pulse text-yellow-500">🎲 Loading your fortune...</div>
+          <h2 className="text-2xl font-bold text-green-500 mb-4">
+            {isAdmin ? 'Welcome Back, Admin!' : 'Welcome Back!'}
+          </h2>
+          <p className="text-gray-300 mb-4">
+            Login successful. Redirecting to your {isAdmin ? 'admin panel' : 'dashboard'}...
+          </p>
+          <div className="animate-pulse text-yellow-500">
+            {isAdmin ? '🛡️ Loading admin controls...' : '🎲 Loading your fortune...'}
+          </div>
         </div>
       </div>
     );

@@ -1,102 +1,24 @@
-import Link from 'next/link'
-
-export default function Home() {
+export default function HomePage() {
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #1f2937 0%, #000000 50%, #1f2937 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'white'
-    }}>
-      <div style={{ textAlign: 'center', maxWidth: '600px', padding: '20px' }}>
-        <h1 style={{
-          fontSize: '4rem',
-          fontWeight: 'bold',
-          color: '#FFD700',
-          marginBottom: '1.5rem'
-        }}>
-          🎲 GAMBINO
-        </h1>
-        <p style={{
-          fontSize: '1.5rem',
-          color: '#D1D5DB',
-          marginBottom: '3rem'
-        }}>
-          Farm Luck. Mine Destiny.
-        </p>
-        
-        <div style={{ 
-          display: 'flex', 
-          gap: '1rem', 
-          justifyContent: 'center', 
-          flexWrap: 'wrap',
-          marginBottom: '2rem'
-        }}>
-          <Link 
-            href="/onboard"
-            style={{
-              backgroundColor: '#FFD700',
-              color: '#000000',
-              padding: '1rem 2rem',
-              borderRadius: '0.5rem',
-              fontWeight: 'bold',
-              textDecoration: 'none',
-              display: 'inline-block'
-            }}
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-6xl font-bold text-yellow-500 mb-4">🎲 GAMBINO</h1>
+        <p className="text-xl text-gray-300 mb-8">The Future of Gaming Tokens</p>
+        <div className="space-x-4">
+          <a 
+            href="/onboard" 
+            className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-6 rounded-lg"
           >
-            Get Started
-          </Link>
-          
-          <Link 
-            href="/login"
-            style={{
-              border: '2px solid #FFD700',
-              color: '#FFD700',
-              backgroundColor: 'transparent',
-              padding: '1rem 2rem',
-              borderRadius: '0.5rem',
-              fontWeight: 'bold',
-              textDecoration: 'none',
-              display: 'inline-block'
-            }}
+            Sign Up
+          </a>
+          <a 
+            href="/login" 
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg"
           >
             Login
-          </Link>
-        </div>
-
-        <div style={{ 
-          display: 'flex', 
-          gap: '1rem', 
-          justifyContent: 'center', 
-          flexWrap: 'wrap'
-        }}>
-          <Link 
-            href="/leaderboard"
-            style={{
-              color: '#9CA3AF',
-              textDecoration: 'none',
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem'
-            }}
-          >
-            📊 Leaderboard
-          </Link>
-          
-          <Link 
-            href="/admin"
-            style={{
-              color: '#6B7280',
-              textDecoration: 'none',
-              padding: '0.5rem 1rem',
-              fontSize: '0.8rem'
-            }}
-          >
-            🔧 Admin
-          </Link>
+          </a>
         </div>
       </div>
     </div>
-  )
+  );
 }
