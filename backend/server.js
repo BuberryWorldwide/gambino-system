@@ -363,12 +363,19 @@ app.post('/api/admin/onboard-user', authenticateAdmin, requirePermission('canCre
     const walletAddress = generateWalletAddress();
     const privateKey = generateWalletAddress();
     const encryptedPrivateKey = await bcrypt.hash(privateKey, 10);
+    
+    // Hash password if provided
+    let hashedPassword = null;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+    }
 
     const user = new User({
       email: email.toLowerCase(),
       phone,
       walletAddress,
       privateKey: encryptedPrivateKey,
+      password: hashedPassword,
       favoriteLocation: storeId,
       isVerified: true,
       isActive: true
@@ -443,6 +450,7 @@ const userSchema = new mongoose.Schema({
   phone: String,
   walletAddress: { type: String, required: true, unique: true },
   privateKey: { type: String, required: true },
+  password: { type: String, required: true },
   gambinoBalance: { type: Number, default: 0 },
   gluckScore: { type: Number, default: 0 },
   tier: { type: String, enum: ['none', 'tier3', 'tier2', 'tier1'], default: 'none' },
@@ -542,10 +550,13 @@ app.get('/health', (req, res) => {
 
 app.post('/api/users/create', async (req, res) => {
   try {
-    const { email, phone } = req.body;
+    const { email, phone, password } = req.body;
 
     if (!email || !email.includes('@')) {
       return res.status(400).json({ error: 'Valid email is required' });
+    }
+    if (password && password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -556,12 +567,19 @@ app.post('/api/users/create', async (req, res) => {
     const walletAddress = generateWalletAddress();
     const privateKey = generateWalletAddress();
     const encryptedPrivateKey = await bcrypt.hash(privateKey, 10);
+    
+    // Hash password if provided
+    let hashedPassword = null;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+    }
 
     const user = new User({
       email: email.toLowerCase(),
       phone,
       walletAddress,
       privateKey: encryptedPrivateKey,
+      password: hashedPassword,
     });
 
     await user.save();
@@ -965,6 +983,12 @@ app.post('/api/onboarding/step1', async (req, res) => {
     const privateKey = generateWalletAddress(); // Simplified for now
     const encryptedPrivateKey = await bcrypt.hash(privateKey, 10);
     
+    // Hash password if provided
+    let hashedPassword = null;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+    }
+    
     // Generate recovery phrase (simplified)
     const words = ['abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse', 'access', 'accident'];
     const recoveryPhrase = words.slice(0, 12).join(' ');
@@ -975,6 +999,7 @@ app.post('/api/onboarding/step1', async (req, res) => {
       phone,
       walletAddress,
       privateKey: encryptedPrivateKey,
+      password: hashedPassword,
     });
 
     await user.save();
@@ -1203,11 +1228,198 @@ process.on('SIGTERM', async () => {
 });
 
 // Start server
+
+// =================== ONBOARDING ENDPOINTS ===================
+// Temporary user storage for multi-step onboarding
+const temporaryUsers = new Map();
+
+// Helper function to generate temporary tokens
+const generateTempToken = () => {
+  return jwt.sign(
+    { temp: true, timestamp: Date.now() }, 
+    process.env.JWT_SECRET || 'fallback_secret',
+    { expiresIn: '1h' }
+  );
+};
+
+// Step 1: Create user account with password
+app.post('/api/onboarding/step1', async (req, res) => {
+  try {
+    const { firstName, lastName, email, phone, password, dateOfBirth } = req.body;
+
+    // Validation
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email is required' });
+    }
+
+    if (!firstName || !lastName) {
+      return res.status(400).json({ error: 'First name and last name are required' });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User already exists with this email' });
+    }
+
+    // Generate wallet address and keys
+    const walletAddress = generateWalletAddress();
+    const privateKey = generateWalletAddress(); // Simplified
+    const encryptedPrivateKey = await bcrypt.hash(privateKey, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create temporary token for this onboarding session
+    const tempToken = generateTempToken();
+
+    // Store temporary user data
+    temporaryUsers.set(tempToken, {
+      firstName,
+      lastName,
+      email: email.toLowerCase(),
+      phone,
+      password: hashedPassword,
+      dateOfBirth,
+      walletAddress,
+      privateKey: encryptedPrivateKey,
+      createdAt: new Date(),
+      step: 1
+    });
+
+    console.log(`✅ Step 1 completed for user: ${email}`);
+
+    res.json({
+      success: true,
+      message: 'Account information saved. Please continue to location selection.',
+      tempToken,
+      walletAddress
+    });
+
+  } catch (error) {
+    console.error('❌ Onboarding Step 1 error:', error);
+    res.status(500).json({ error: 'Failed to process account creation' });
+  }
+});
+
+// Step 2: Location and preferences
+app.post('/api/onboarding/step2', async (req, res) => {
+  try {
+    const { storeId, agreedToTerms, marketingConsent } = req.body;
+    const tempToken = req.headers.authorization?.split(' ')[1];
+
+    if (!tempToken || !temporaryUsers.has(tempToken)) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+
+    if (!storeId) {
+      return res.status(400).json({ error: 'Please select a location' });
+    }
+
+    if (!agreedToTerms) {
+      return res.status(400).json({ error: 'You must agree to the terms of service' });
+    }
+
+    // Update temporary user data
+    const tempUser = temporaryUsers.get(tempToken);
+    tempUser.storeId = storeId;
+    tempUser.agreedToTerms = agreedToTerms;
+    tempUser.marketingConsent = marketingConsent || false;
+    tempUser.step = 2;
+    temporaryUsers.set(tempToken, tempUser);
+
+    console.log(`🏪 Step 2 completed for user: ${tempUser.email}`);
+
+    res.json({
+      success: true,
+      message: 'Location and preferences saved. Please continue to payment.',
+      selectedStore: storeId
+    });
+
+  } catch (error) {
+    console.error('❌ Onboarding Step 2 error:', error);
+    res.status(500).json({ error: 'Failed to save preferences' });
+  }
+});
+
+// Step 3: Initial deposit and complete account creation
+app.post('/api/onboarding/step3', async (req, res) => {
+  try {
+    const { depositAmount, paymentMethod } = req.body;
+    const tempToken = req.headers.authorization?.split(' ')[1];
+
+    if (!tempToken || !temporaryUsers.has(tempToken)) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+
+    const tempUser = temporaryUsers.get(tempToken);
+
+    if (!depositAmount || depositAmount < 10) {
+      return res.status(400).json({ error: 'Minimum deposit is $10' });
+    }
+
+    // Calculate GAMBINO tokens
+    const currentPrice = 0.001; // $0.001 per GAMBINO
+    const tokensToMint = Math.floor(depositAmount / currentPrice);
+
+    // Create the actual user account
+    const user = new User({
+      email: tempUser.email,
+      phone: tempUser.phone,
+      walletAddress: tempUser.walletAddress,
+      privateKey: tempUser.privateKey,
+      password: tempUser.password,
+      gambinoBalance: tokensToMint
+    });
+
+    await user.save();
+
+    // Generate real JWT for the user
+    const authToken = jwt.sign(
+      { userId: user._id, walletAddress: user.walletAddress }, 
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: '24h' }
+    );
+
+    // Clean up temporary data
+    temporaryUsers.delete(tempToken);
+
+    console.log(`🎉 Onboarding completed for: ${tempUser.email} - ${tokensToMint} GAMBINO tokens`);
+
+    res.json({
+      success: true,
+      message: 'Welcome to Gambino! Your account has been created successfully.',
+      user: {
+        id: user._id,
+        email: user.email,
+        walletAddress: user.walletAddress,
+        gambinoBalance: user.gambinoBalance,
+        gluckScore: user.gluckScore,
+        tier: user.tier
+      },
+      transaction: {
+        tokensReceived: tokensToMint,
+        depositAmount,
+        pricePerToken: currentPrice
+      },
+      authToken
+    });
+
+  } catch (error) {
+    console.error('❌ Onboarding Step 3 error:', error);
+    res.status(500).json({ error: 'Failed to complete account setup' });
+  }
+});
+
+// =================== END ONBOARDING ENDPOINTS ===================
+
 const startServer = async () => {
   try {
     await connectDB();
     
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`🎰 Gambino Backend Server running on port ${PORT}`);
       console.log(`🔗 Health check: http://localhost:${PORT}/health`);
       console.log(`📊 Admin stats: http://localhost:${PORT}/api/admin/stats`);
