@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: '/opt/gambino/.env' });
 
 const express = require('express');
 const cors = require('cors');
@@ -143,8 +143,12 @@ app.get('/health', (req, res) => {
 });
 
 
+const blockchainTreasuryRoutes = require('./src/routes/blockchainTreasuryRoutes');
+
+
 // Onboarding Step 1
 app.post('/api/onboarding/step1', async (req, res) => {
+// Blockchain Treasury Routes\napp.get("/api/blockchain-treasury/balances", (req, res) => {\n  const adminKey = req.headers["x-admin-key"];\n  const expectedKey = process.env.ADMIN_API_KEY || "your-admin-api-key-change-this";\n  \n  if (adminKey !== expectedKey) {\n    return res.status(401).json({ error: "Admin access required" });\n  }\n  \n  res.json({ success: true, message: "Treasury balances endpoint working" });\n});
   try {
     const { firstName, lastName, email, phone, password } = req.body;
 
@@ -620,16 +624,22 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
+app.use('/api/blockchain-treasury', blockchainTreasuryRoutes);
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
+
+
 
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('❌ Server error:', error);
   res.status(500).json({ error: 'Internal server error' });
 });
+
+
 
 // Start server
 const startServer = async () => {
