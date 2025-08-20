@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -6,451 +8,51 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const Admin = require('./src/models/Admin');
-require('dotenv').config();
-console.log('🔧 Environment loaded - ADMIN_KEY:', process.env.ADMIN_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Security middleware
+console.log('🔧 ENV loaded. FRONTEND_URL:', process.env.FRONTEND_URL);
+
+// Security + utils
 app.use(helmet());
 app.use(morgan('combined'));
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
-});
-app.use(limiter);
-
-// CORS and JSON parsing
+// CORS + JSON
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://192.168.1.235:3000',
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
 
-// Admin authentication middleware
-const authenticateAdmin = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ error: 'Admin token required' });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
-    const admin = await Admin.findById(decoded.adminId);
-    
-    if (!admin || !admin.isActive) {
-      return res.status(403).json({ error: 'Admin access denied' });
-    }
-
-    // Update last activity
-    admin.lastActivity = new Date();
-    await admin.save();
-
-    req.admin = admin;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Invalid admin token' });
-  }
-};
-
-// Permission check middleware
-const requirePermission = (permission) => {
-  return (req, res, next) => {
-    if (!req.admin.hasPermission(permission)) {
-      return res.status(403).json({ 
-        error: `Permission denied: ${permission} required` 
-      });
-    }
-    next();
-  };
-};
-
-// Store access middleware
-const requireStoreAccess = (req, res, next) => {
-  const storeId = req.params.storeId || req.body.storeId || req.query.storeId;
-  
-  if (storeId && !req.admin.canAccessStore(storeId)) {
-    return res.status(403).json({ 
-      error: 'Access denied for this store' 
-    });
-  }
-  
-  next();
-};
-
-// Admin Routes
-
-// Create super admin (run once to bootstrap)
-app.post('/api/admin/bootstrap', async (req, res) => {
-  try {
-    // Check if any super admin exists
-    const existingSuperAdmin = await Admin.findOne({ adminType: 'super_admin' });
-    if (existingSuperAdmin) {
-      return res.status(400).json({ error: 'Super admin already exists' });
-    }
-
-    const { firstName, lastName, email, password } = req.body;
-
-    if (!firstName || !lastName || !email || !password) {
-      return res.status(400).json({ 
-        error: 'First name, last name, email, and password are required' 
-      });
-    }
-
-    const admin = new Admin({
-      firstName,
-      lastName,
-      email: email.toLowerCase(),
-      adminType: 'super_admin',
-      permissions: Admin.getPermissionTemplate('super_admin'),
-      isVerified: true,
-      mustChangePassword: false
-    });
-
-    await admin.setPassword(password);
-    await admin.save();
-
-    console.log(`🔐 Super admin created: ${email}`);
-
-    res.status(201).json({
-      success: true,
-      message: 'Super admin created successfully',
-      admin: admin.toSafeObject()
-    });
-
-  } catch (error) {
-    console.error('❌ Super admin creation error:', error);
-    res.status(500).json({ error: 'Failed to create super admin' });
-  }
-});
-
-// Admin login
-app.post('/api/admin/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    const admin = await Admin.findOne({ 
-      email: email.toLowerCase(),
-      isActive: true 
-    });
-
-    if (!admin) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const isValidPassword = await admin.checkPassword(password);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Update login stats
-    admin.lastLogin = new Date();
-    admin.loginCount += 1;
-    admin.lastActivity = new Date();
-    admin.ipAddress = req.ip;
-    await admin.save();
-
-    // Generate token
-    const token = jwt.sign(
-      { 
-        adminId: admin._id,
-        adminType: admin.adminType,
-        stores: admin.assignedStores
-      },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '8h' } // Shorter session for security
-    );
-
-    console.log(`🔐 Admin login: ${email} (${admin.adminType})`);
-
-    res.json({
-      success: true,
-      admin: admin.toSafeObject(),
-      token,
-      mustChangePassword: admin.mustChangePassword
-    });
-
-  } catch (error) {
-    console.error('❌ Admin login error:', error);
-    res.status(500).json({ error: 'Login failed' });
-  }
-});
-
-// Create store admin
-app.post('/api/admin/create-store-admin', authenticateAdmin, requirePermission('canManageAdmins'), async (req, res) => {
-  try {
-    const { firstName, lastName, email, storeId, storeName } = req.body;
-
-    if (!firstName || !lastName || !email || !storeId) {
-      return res.status(400).json({ 
-        error: 'First name, last name, email, and store ID are required' 
-      });
-    }
-
-    // Check if admin already exists
-    const existingAdmin = await Admin.findOne({ email: email.toLowerCase() });
-    if (existingAdmin) {
-      return res.status(400).json({ error: 'Admin with this email already exists' });
-    }
-
-    // Generate temporary password
-    const tempPassword = Math.random().toString(36).slice(-12);
-
-    const admin = new Admin({
-      firstName,
-      lastName,
-      email: email.toLowerCase(),
-      adminType: 'store_admin',
-      assignedStores: [storeId],
-      primaryStore: storeId,
-      permissions: Admin.getPermissionTemplate('store_admin'),
-      createdBy: req.admin._id,
-      mustChangePassword: true
-    });
-
-    await admin.setPassword(tempPassword);
-    await admin.save();
-
-    console.log(`👨‍💼 Store admin created: ${email} for store ${storeId}`);
-
-    res.status(201).json({
-      success: true,
-      message: 'Store admin created successfully',
-      admin: admin.toSafeObject(),
-      temporaryPassword: tempPassword, // Send this securely in production
-      storeInfo: { storeId, storeName }
-    });
-
-  } catch (error) {
-    console.error('❌ Store admin creation error:', error);
-    res.status(500).json({ error: 'Failed to create store admin' });
-  }
-});
-
-// Get admin dashboard data
-app.get('/api/admin/dashboard', authenticateAdmin, async (req, res) => {
-  try {
-    let query = {};
-    
-    // Filter data based on admin type and store access
-    if (req.admin.adminType === 'store_admin' || req.admin.adminType === 'operator') {
-      query = { 
-        $or: req.admin.assignedStores.map(storeId => ({ storeId }))
-      };
-    }
-
-    const [users, transactions, stats] = await Promise.all([
-      // Users in admin's accessible stores
-      User.countDocuments(query),
-      
-      // Recent transactions
-      Transaction.find(query)
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate('userId', 'firstName lastName email')
-        .lean(),
-      
-      // Store-specific stats
-      Transaction.aggregate([
-        { $match: query },
-        {
-          $group: {
-            _id: null,
-            totalVolume: { $sum: '$usdAmount' },
-            totalTransactions: { $sum: 1 },
-            avgTransaction: { $avg: '$usdAmount' }
-          }
-        }
-      ])
-    ]);
-
-    const dashboard = {
-      adminInfo: {
-        name: req.admin.fullName,
-        type: req.admin.adminType,
-        stores: req.admin.assignedStores,
-        permissions: req.admin.permissions
-      },
-      stats: {
-        totalUsers: users,
-        recentTransactions: transactions,
-        volume: stats[0] || { totalVolume: 0, totalTransactions: 0, avgTransaction: 0 }
-      },
-      accessLevel: req.admin.adminType
-    };
-
-    res.json({ success: true, dashboard });
-
-  } catch (error) {
-    console.error('❌ Admin dashboard error:', error);
-    res.status(500).json({ error: 'Failed to load dashboard' });
-  }
-});
-
-// Get store-specific user list
-app.get('/api/admin/users', authenticateAdmin, requirePermission('canViewUsers'), async (req, res) => {
-  try {
-    const { page = 1, limit = 50, storeId } = req.query;
-    
-    let query = {};
-    
-    // Apply store filtering based on admin type
-    if (req.admin.adminType !== 'super_admin') {
-      if (storeId && req.admin.canAccessStore(storeId)) {
-        // Filter by specific store if admin has access
-        query.favoriteLocation = storeId;
-      } else {
-        // Filter by all admin's assigned stores
-        query.favoriteLocation = { $in: req.admin.assignedStores };
-      }
-    } else if (storeId) {
-      // Super admin can view any store
-      query.favoriteLocation = storeId;
-    }
-
-    const users = await User.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .select('-encryptedPrivateKey -privateKeyIV -recoveryPhrase -recoveryPhraseIV')
-      .lean();
-
-    const total = await User.countDocuments(query);
-
-    res.json({
-      success: true,
-      users,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
-      },
-      storeFilter: storeId || 'all_accessible'
-    });
-
-  } catch (error) {
-    console.error('❌ Admin users list error:', error);
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
-
-// Manual user onboarding by admin
-app.post('/api/admin/onboard-user', authenticateAdmin, requirePermission('canCreateUsers'), async (req, res) => {
-  try {
-    const { firstName, lastName, email, phone, storeId, initialDeposit = 0 } = req.body;
-
-    // Validate store access
-    if (!req.admin.canAccessStore(storeId)) {
-      return res.status(403).json({ error: 'Access denied for this store' });
-    }
-
-    // Check if user exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    // Create user similar to onboarding flow
-    const walletAddress = generateWalletAddress();
-    const privateKey = generateWalletAddress();
-    const encryptedPrivateKey = await bcrypt.hash(privateKey, 10);
-    
-    // Hash password if provided
-    let hashedPassword = null;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-    }
-
-    const user = new User({
-      email: email.toLowerCase(),
-      phone,
-      walletAddress,
-      privateKey: encryptedPrivateKey,
-      password: hashedPassword,
-      favoriteLocation: storeId,
-      isVerified: true,
-      isActive: true
-    });
-
-    // Add initial deposit if provided
-    if (initialDeposit > 0) {
-      const currentPrice = 0.001;
-      const tokensToMint = Math.floor(initialDeposit / currentPrice);
-      user.gambinoBalance = tokensToMint;
-      user.totalDeposited = initialDeposit;
-
-      // Create transaction
-      const transaction = new Transaction({
-        userId: user._id,
-        type: 'purchase',
-        amount: tokensToMint,
-        usdAmount: initialDeposit,
-        status: 'completed',
-        txHash: `admin_onboard_${Date.now()}_${user._id}`,
-        metadata: {
-          adminOnboarding: true,
-          adminId: req.admin._id.toString(),
-          storeId
-        }
-      });
-
-      await transaction.save();
-    }
-
-    await user.save();
-
-    console.log(`👨‍💼 Admin ${req.admin.email} onboarded user: ${email} at store ${storeId}`);
-
-    res.status(201).json({
-      success: true,
-      message: 'User onboarded successfully',
-      user: {
-        id: user._id,
-        email: user.email,
-        walletAddress: user.walletAddress,
-        gambinoBalance: user.gambinoBalance,
-        storeId
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Admin user onboarding error:', error);
-    res.status(500).json({ error: 'Failed to onboard user' });
-  }
-});
-
-
-
-// MongoDB Connection
+// Connect DB
 const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/gambino', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    console.log('📦 MongoDB connected successfully');
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    console.log('🔄 Starting without database (will retry on requests)');
-  }
+  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/gambino', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  });
+  console.log('📦 MongoDB connected');
 };
 
-// User Schema
+// ===== User Schema =====
 const userSchema = new mongoose.Schema({
+  firstName: String,
+  lastName: String,
   email: { type: String, required: true, unique: true, lowercase: true },
   phone: String,
+  password: { type: String, required: true },
   walletAddress: { type: String, required: true, unique: true },
   privateKey: { type: String, required: true },
-  password: { type: String, required: true },
+// Add role field
+  role: { 
+    type: String, 
+    enum: ['user', 'store_manager', 'store_owner', 'super_admin'], 
+    default: 'user' 
+  },
+  
+
+
   gambinoBalance: { type: Number, default: 0 },
   gluckScore: { type: Number, default: 0 },
   tier: { type: String, enum: ['none', 'tier3', 'tier2', 'tier1'], default: 'none' },
@@ -458,141 +60,250 @@ const userSchema = new mongoose.Schema({
   majorJackpots: { type: Number, default: 0 },
   minorJackpots: { type: Number, default: 0 },
   machinesPlayed: [String],
+  favoriteLocation: String,
+  isVerified: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
   lastActivity: { type: Date, default: Date.now }
 });
 
 userSchema.index({ email: 1 });
-userSchema.index({ gluckScore: -1 });
 userSchema.index({ walletAddress: 1 });
-
+userSchema.index({ gluckScore: -1 });
 const User = mongoose.model('User', userSchema);
 
-// Transaction Schema
+// ===== Transaction Schema =====
 const transactionSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   type: { type: String, enum: ['purchase', 'jackpot', 'burn', 'tier_reward'], required: true },
   amount: { type: Number, required: true },
-  usdAmount: { type: Number },
+  usdAmount: Number,
   machineId: String,
   txHash: String,
   status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
   gluckScoreChange: { type: Number, default: 0 },
-  metadata: { type: Object },
+  metadata: Object,
   createdAt: { type: Date, default: Date.now }
 });
 
 transactionSchema.index({ userId: 1, createdAt: -1 });
 transactionSchema.index({ type: 1 });
-
 const Transaction = mongoose.model('Transaction', transactionSchema);
 
 // Helper functions
 const generateWalletAddress = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < 44; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  let s = '';
+  for (let i = 0; i < 44; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+  return s;
 };
 
 const calculateGluckScore = (majorJackpots, minorJackpots, machinesPlayed) => {
-  let baseScore = (majorJackpots * 1000) + (minorJackpots * 100);
-  const uniqueMachines = new Set(machinesPlayed).size;
-  let diversityMultiplier = 1.0;
-  
-  if (uniqueMachines >= 7) diversityMultiplier = 3.0;
-  else if (uniqueMachines >= 5) diversityMultiplier = 2.5;
-  else if (uniqueMachines >= 3) diversityMultiplier = 2.0;
-  else if (uniqueMachines >= 2) diversityMultiplier = 1.5;
-  
-  return Math.floor(baseScore * diversityMultiplier);
+  const base = majorJackpots * 1000 + minorJackpots * 100;
+  const unique = new Set(machinesPlayed).size;
+  const mult = unique >= 7 ? 3 : unique >= 5 ? 2.5 : unique >= 3 ? 2 : unique >= 2 ? 1.5 : 1;
+  return Math.floor(base * mult);
 };
 
 const determineTier = (majorJackpots, minorJackpots, machinesPlayed) => {
-  const uniqueMachines = new Set(machinesPlayed).size;
-  
-  if (majorJackpots >= 7 && uniqueMachines >= 3) return 'tier1';
-  if ((majorJackpots >= 1 && minorJackpots >= 10 && uniqueMachines >= 2) || (majorJackpots >= 2)) return 'tier2';
-  if (minorJackpots >= 50 || (minorJackpots >= 20 && uniqueMachines >= 2)) return 'tier3';
-  
+  const unique = new Set(machinesPlayed).size;
+  if (majorJackpots >= 7 && unique >= 3) return 'tier1';
+  if ((majorJackpots >= 1 && minorJackpots >= 10 && unique >= 2) || majorJackpots >= 2) return 'tier2';
+  if (minorJackpots >= 50 || (minorJackpots >= 20 && unique >= 2)) return 'tier3';
   return 'none';
 };
 
-// Auth middleware
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Access token required' });
 
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret', (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret', (err, decoded) => {
     if (err) return res.status(403).json({ error: 'Invalid token' });
-    req.user = user;
+    req.user = decoded;
     next();
   });
 };
 
-// Routes
+// Temporary session storage for onboarding
+const temporaryUsers = new Map();
+const generateTempToken = () =>
+  jwt.sign({ temp: true, ts: Date.now() }, process.env.JWT_SECRET || 'fallback_secret', { expiresIn: '1h' });
+
+// ===== ROUTES =====
+
+// Health check
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    version: '1.0.0',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    version: '1.0.0'
   });
 });
 
-app.post('/api/users/create', async (req, res) => {
+
+// Onboarding Step 1
+app.post('/api/onboarding/step1', async (req, res) => {
   try {
-    const { email, phone, password } = req.body;
+    const { firstName, lastName, email, phone, password } = req.body;
 
-    if (!email || !email.includes('@')) {
-      return res.status(400).json({ error: 'Valid email is required' });
-    }
-    if (password && password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
+    if (!firstName || !lastName) return res.status(400).json({ success: false, error: 'First/last name required' });
+    if (!email || !email.includes('@')) return res.status(400).json({ success: false, error: 'Valid email required' });
+    if (!password || password.length < 6) return res.status(400).json({ success: false, error: 'Password ≥ 6 chars' });
 
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
+    if (await User.findOne({ email: email.toLowerCase() })) {
+      return res.status(409).json({ success: false, error: 'Account already exists' });
     }
 
     const walletAddress = generateWalletAddress();
     const privateKey = generateWalletAddress();
     const encryptedPrivateKey = await bcrypt.hash(privateKey, 10);
-    
-    // Hash password if provided
-    let hashedPassword = null;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-    }
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-    const user = new User({
+    const tempToken = generateTempToken();
+    temporaryUsers.set(tempToken, {
+      step: 1,
+      firstName, lastName,
       email: email.toLowerCase(),
       phone,
+      password: hashedPassword,
       walletAddress,
       privateKey: encryptedPrivateKey,
-      password: hashedPassword,
+      createdAt: new Date()
     });
 
-    await user.save();
+    console.log(`✅ Onboarding step1 OK: ${email}`);
+    res.json({ success: true, message: 'Step 1 saved', tempToken, walletAddress });
+  } catch (e) {
+    console.error('❌ Step1 error:', e);
+    res.status(500).json({ success: false, error: 'Failed to process step 1' });
+  }
+});
 
-    const token = jwt.sign(
-      { userId: user._id, walletAddress }, 
+// Onboarding Step 2
+app.post('/api/onboarding/step2', async (req, res) => {
+  try {
+    const tempToken = req.headers.authorization?.split(' ')[1];
+    const { storeId, agreedToTerms, marketingConsent } = req.body;
+
+    if (!tempToken || !temporaryUsers.has(tempToken)) {
+      return res.status(401).json({ success: false, error: 'Invalid/expired session' });
+    }
+    if (!storeId) return res.status(400).json({ success: false, error: 'Store selection required' });
+    if (!agreedToTerms) return res.status(400).json({ success: false, error: 'You must agree to the terms' });
+
+    const userData = temporaryUsers.get(tempToken);
+    userData.step = 2;
+    userData.storeId = storeId;
+    userData.agreedToTerms = true;
+    userData.marketingConsent = !!marketingConsent;
+    temporaryUsers.set(tempToken, userData);
+
+    console.log(`🏪 Onboarding step2 OK: ${userData.email} -> ${storeId}`);
+    res.json({ success: true, message: 'Step 2 saved', selectedStore: storeId });
+  } catch (e) {
+    console.error('❌ Step2 error:', e);
+    res.status(500).json({ success: false, error: 'Failed to process step 2' });
+  }
+});
+
+// Onboarding Step 3
+app.post('/api/onboarding/step3', async (req, res) => {
+  try {
+    const tempToken = req.headers.authorization?.split(' ')[1];
+    const { depositAmount, paymentMethod } = req.body;
+
+    if (!tempToken || !temporaryUsers.has(tempToken)) {
+      return res.status(401).json({ success: false, error: 'Invalid/expired session' });
+    }
+    if (!depositAmount || depositAmount < 10) {
+      return res.status(400).json({ success: false, error: 'Minimum deposit is $10' });
+    }
+
+    const userData = temporaryUsers.get(tempToken);
+    const price = 0.001;
+    const tokens = Math.floor(depositAmount / price);
+
+    // Create the real user
+    const user = await User.create({
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      email: userData.email,
+      phone: userData.phone,
+      password: userData.password,
+      walletAddress: userData.walletAddress,
+      privateKey: userData.privateKey,
+      favoriteLocation: userData.storeId,
+      isVerified: true,
+      gambinoBalance: tokens
+    });
+
+    await Transaction.create({
+      userId: user._id,
+      type: 'purchase',
+      amount: tokens,
+      usdAmount: depositAmount,
+      status: 'completed',
+      txHash: `onboarding_${Date.now()}_${user._id}`,
+      metadata: { paymentMethod, pricePerToken: price, onboardingDeposit: true }
+    });
+
+    temporaryUsers.delete(tempToken);
+
+    const accessToken = jwt.sign(
+      { userId: user._id, walletAddress: user.walletAddress, tier: user.tier },
       process.env.JWT_SECRET || 'fallback_secret',
       { expiresIn: '24h' }
     );
 
-    console.log(`✅ New user created: ${email}`);
+    console.log(`🎉 Onboarding complete: ${user.email} — ${tokens} GAMBINO`);
+    res.json({
+      success: true,
+      message: 'Account created successfully!',
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          walletAddress: user.walletAddress,
+          gambinoBalance: user.gambinoBalance,
+          gluckScore: user.gluckScore,
+          tier: user.tier
+        },
+        tokensReceived: tokens,
+        pricePerToken: price,
+        totalPaid: depositAmount
+      },
+      accessToken
+    });
+  } catch (e) {
+    console.error('❌ Step3 error:', e);
+    res.status(500).json({ success: false, error: 'Failed to complete onboarding' });
+  }
+});
 
-    res.status(201).json({
+// User login
+app.post('/api/users/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) return res.status(401).json({ error: 'Invalid credentials' });
+
+    user.lastActivity = new Date();
+    await user.save();
+
+    const token = jwt.sign(
+      { userId: user._id, walletAddress: user.walletAddress },
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: '24h' }
+    );
+
+    res.json({
       success: true,
       user: {
         id: user._id,
@@ -604,63 +315,214 @@ app.post('/api/users/create', async (req, res) => {
       },
       token
     });
-  } catch (error) {
-    console.error('❌ User creation error:', error);
-    res.status(500).json({ error: 'Failed to create user' });
-  }
-});
-
-app.post('/api/users/login', async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required' });
-    }
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    user.lastActivity = new Date();
-    await user.save();
-
-    const token = jwt.sign(
-      { userId: user._id, walletAddress: user.walletAddress }, 
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '24h' }
-    );
-
-    console.log(`🔐 User logged in: ${email}`);
-
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        email: user.email,
-        walletAddress: user.walletAddress,
-        gambinoBalance: user.gambinoBalance,
-        gluckScore: user.gluckScore,
-        tier: user.tier,
-        totalJackpots: user.totalJackpots,
-        majorJackpots: user.majorJackpots,
-        minorJackpots: user.minorJackpots
-      },
-      token
-    });
-  } catch (error) {
-    console.error('❌ Login error:', error);
+  } catch (e) {
+    console.error('❌ Login error:', e);
     res.status(500).json({ error: 'Login failed' });
   }
 });
 
+
+// Simple admin login (temporary)
+app.post('/api/admin/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) return res.status(401).json({ error: 'Invalid credentials' });
+    
+    // Check if user has admin role
+    if (!['store_manager', 'store_owner', 'super_admin'].includes(user.role)) {
+      return res.status(403).json({ error: 'Access denied - insufficient permissions' });
+    }
+    
+    const adminToken = jwt.sign(
+      { userId: user._id, email: user.email, role: user.role },
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: '24h' }
+    );
+    
+    res.json({
+      success: true,
+      message: 'Admin login successful',
+      token: adminToken,
+      admin: {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+        name: `${user.firstName} ${user.lastName}`
+      }
+    });
+  } catch (error) {
+    console.error('❌ Admin login error:', error);
+    res.status(500).json({ error: 'Admin login failed' });
+  }
+});
+
+
+
+
+
+
+// Admin middleware
+const authenticateAdmin = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Admin token required' });
+
+  jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret', (err, decoded) => {
+    if (err || !decoded.role === 'admin') {
+      return res.status(403).json({ error: 'Admin access denied' });
+    }
+    req.admin = decoded;
+    next();
+  });
+};
+
+
+// Admin metrics endpoint
+app.get('/api/admin/metrics', async (req, res) => {
+  try {
+    if (req.headers['admin-key'] !== (process.env.ADMIN_KEY || 'admin123')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { timeframe = '7d' } = req.query;
+    
+    // Calculate date range
+    let startDate = new Date();
+    switch(timeframe) {
+      case '24h':
+        startDate.setDate(startDate.getDate() - 1);
+        break;
+      case '7d':
+        startDate.setDate(startDate.getDate() - 7);
+        break;
+      case '30d':
+        startDate.setDate(startDate.getDate() - 30);
+        break;
+      default:
+        startDate = new Date(0); // All time
+    }
+
+    const [recentTransactions, recentUsers] = await Promise.all([
+      Transaction.find({ createdAt: { $gte: startDate } }),
+      User.find({ createdAt: { $gte: startDate } })
+    ]);
+
+    const metrics = {
+      timeframe,
+      totalTransactions: recentTransactions.length,
+      totalVolume: recentTransactions.reduce((sum, tx) => sum + (tx.usdAmount || 0), 0),
+      avgTransactionSize: recentTransactions.length > 0 ? 
+        recentTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0) / recentTransactions.length : 0,
+      newUsers: recentUsers.length,
+      purchaseTransactions: recentTransactions.filter(tx => tx.type === 'purchase').length,
+      jackpotTransactions: recentTransactions.filter(tx => tx.type === 'jackpot').length
+    };
+
+    res.json({
+      success: true,
+      data: metrics
+    });
+  } catch (error) {
+    console.error('❌ Metrics error:', error);
+    res.status(500).json({ error: 'Failed to fetch metrics' });
+  }
+});
+
+
+// Change password (admin or user)
+app.post('/api/users/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new passwords are required' });
+    }
+    
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+    
+    const user = await User.findById(req.user.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    // Verify current password
+    const passwordMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    
+    // Hash new password
+    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+    
+    // Update password
+    user.password = hashedNewPassword;
+    user.lastActivity = new Date();
+    await user.save();
+    
+    console.log(`✅ Password changed for: ${user.email}`);
+    
+    res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+    
+  } catch (error) {
+    console.error('❌ Password change error:', error);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
+// Admin password reset (super admin only)
+app.post('/api/admin/reset-user-password', authenticateAdmin, async (req, res) => {
+  try {
+    const { userId, newPassword } = req.body;
+    
+    // Only super admins can reset passwords
+    if (req.admin.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only super admins can reset passwords' });
+    }
+    
+    if (!userId || !newPassword) {
+      return res.status(400).json({ error: 'User ID and new password are required' });
+    }
+    
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    
+    // Update password
+    user.password = hashedPassword;
+    user.lastActivity = new Date();
+    await user.save();
+    
+    console.log(`✅ Admin ${req.admin.email} reset password for: ${user.email}`);
+    
+    res.json({
+      success: true,
+      message: `Password reset for ${user.email}`
+    });
+    
+  } catch (error) {
+    console.error('❌ Admin password reset error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// User profile
 app.get('/api/users/profile', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json({
       success: true,
@@ -679,141 +541,55 @@ app.get('/api/users/profile', authenticateToken, async (req, res) => {
         lastActivity: user.lastActivity
       }
     });
-  } catch (error) {
-    console.error('❌ Profile fetch error:', error);
+  } catch (e) {
+    console.error('❌ Profile error:', e);
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
 
+// Token purchase
 app.post('/api/tokens/purchase', authenticateToken, async (req, res) => {
   try {
     const { amount } = req.body;
-
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: 'Valid amount is required' });
-    }
+    if (!amount || amount <= 0) return res.status(400).json({ error: 'Valid amount is required' });
 
     const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const currentPrice = 0.001;
-    const tokensToMint = Math.floor(amount / currentPrice);
+    const price = 0.001;
+    const tokens = Math.floor(amount / price);
 
-    const transaction = new Transaction({
+    const transaction = await Transaction.create({
       userId: user._id,
       type: 'purchase',
-      amount: tokensToMint,
+      amount: tokens,
       usdAmount: amount,
-      status: 'pending',
-      metadata: { pricePerToken: currentPrice }
+      status: 'completed',
+      txHash: `purchase_${Date.now()}_${user._id}`,
+      metadata: { pricePerToken: price }
     });
 
-    await transaction.save();
-
-    user.gambinoBalance += tokensToMint;
+    user.gambinoBalance += tokens;
     user.lastActivity = new Date();
     await user.save();
-
-    transaction.status = 'completed';
-    transaction.txHash = `purchase_${Date.now()}_${user._id}`;
-    await transaction.save();
-
-    console.log(`💰 Token purchase: ${user.email} bought ${tokensToMint} GAMBINO for $${amount}`);
 
     res.json({
       success: true,
       transaction: {
         id: transaction._id,
-        tokensReceived: tokensToMint,
-        pricePerToken: currentPrice,
+        tokensReceived: tokens,
+        pricePerToken: price,
         totalPaid: amount
       },
       newBalance: user.gambinoBalance
     });
-  } catch (error) {
-    console.error('❌ Purchase error:', error);
+  } catch (e) {
+    console.error('❌ Purchase error:', e);
     res.status(500).json({ error: 'Purchase failed' });
   }
 });
 
-app.post('/api/gaming/jackpot', authenticateToken, async (req, res) => {
-  try {
-    const { machineId, jackpotType, tokensWon } = req.body;
-
-    if (!machineId || !jackpotType || !tokensWon) {
-      return res.status(400).json({ error: 'Machine ID, jackpot type, and tokens won are required' });
-    }
-
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    if (!user.machinesPlayed.includes(machineId)) {
-      user.machinesPlayed.push(machineId);
-    }
-
-    if (jackpotType === 'major') {
-      user.majorJackpots += 1;
-    } else {
-      user.minorJackpots += 1;
-    }
-    user.totalJackpots += 1;
-
-    const newGluckScore = calculateGluckScore(user.majorJackpots, user.minorJackpots, user.machinesPlayed);
-    const gluckScoreIncrease = newGluckScore - user.gluckScore;
-    user.gluckScore = newGluckScore;
-
-    const oldTier = user.tier;
-    user.tier = determineTier(user.majorJackpots, user.minorJackpots, user.machinesPlayed);
-
-    user.gambinoBalance += tokensWon;
-    user.lastActivity = new Date();
-    await user.save();
-
-    const transaction = new Transaction({
-      userId: user._id,
-      type: 'jackpot',
-      amount: tokensWon,
-      machineId,
-      status: 'completed',
-      gluckScoreChange: gluckScoreIncrease,
-      txHash: `jackpot_${Date.now()}_${user._id}`,
-      metadata: { 
-        jackpotType, 
-        oldTier, 
-        newTier: user.tier,
-        uniqueMachines: new Set(user.machinesPlayed).size
-      }
-    });
-
-    await transaction.save();
-
-    console.log(`🎰 JACKPOT! ${user.email} won ${tokensWon} GAMBINO on machine ${machineId}`);
-
-    res.json({
-      success: true,
-      jackpot: {
-        type: jackpotType,
-        tokensWon,
-        newBalance: user.gambinoBalance,
-        gluckScoreIncrease,
-        newGluckScore: user.gluckScore,
-        oldTier,
-        newTier: user.tier,
-        tierUpgrade: user.tier !== oldTier,
-        totalJackpots: user.totalJackpots,
-        uniqueMachines: new Set(user.machinesPlayed).size
-      }
-    });
-  } catch (error) {
-    console.error('❌ Jackpot processing error:', error);
-    res.status(500).json({ error: 'Failed to process jackpot' });
-  }
-});
-
+// Leaderboard
 app.get('/api/leaderboard', async (req, res) => {
   try {
     const topUsers = await User.find({ isActive: true })
@@ -838,597 +614,42 @@ app.get('/api/leaderboard', async (req, res) => {
       leaderboard,
       totalPlayers: await User.countDocuments({ isActive: true })
     });
-  } catch (error) {
-    console.error('❌ Leaderboard error:', error);
+  } catch (e) {
+    console.error('❌ Leaderboard error:', e);
     res.status(500).json({ error: 'Failed to fetch leaderboard' });
   }
 });
 
-app.get('/api/price/current', async (req, res) => {
-  try {
-    const totalUsers = await User.countDocuments({ isActive: true }).catch(() => 0);
-    const totalTransactions = await Transaction.countDocuments().catch(() => 0);
-    const totalJackpots = await Transaction.countDocuments({ type: 'jackpot' }).catch(() => 0);
-    
-    const totalGambinoResult = await User.aggregate([
-      { $group: { _id: null, total: { $sum: '$gambinoBalance' } } }
-    ]).catch(() => [{ total: 0 }]);
-    
-    const circulatingSupply = totalGambinoResult[0]?.total || 0;
-
-    const stats = {
-      currentPrice: 0.001,
-      marketCap: circulatingSupply * 0.001,
-      totalSupply: 777000000,
-      circulatingSupply,
-      volume24h: 50000,
-      priceChange24h: 0.05,
-      totalJackpotPool: 777000000 * 0.4,
-      jackpotsHitToday: totalJackpots,
-      totalUsers,
-      totalTransactions,
-      lastUpdated: new Date().toISOString()
-    };
-
-    res.json({
-      success: true,
-      stats
-    });
-  } catch (error) {
-    console.error('❌ Price fetch error:', error);
-    res.status(500).json({ error: 'Failed to fetch price' });
-  }
-});
-
-app.get('/api/transactions', authenticateToken, async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
-    const skip = (page - 1) * limit;
-
-    const transactions = await Transaction.find({ userId: req.user.userId })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const total = await Transaction.countDocuments({ userId: req.user.userId });
-
-    res.json({
-      success: true,
-      transactions,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    });
-  } catch (error) {
-    console.error('❌ Transaction history error:', error);
-    res.status(500).json({ error: 'Failed to fetch transactions' });
-  }
-});
-
-app.get('/api/admin/stats', async (req, res) => {
-  try {
-    const authHeader = req.headers['admin-key'];
-    if (authHeader !== (process.env.ADMIN_KEY || 'admin123')) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const totalUsers = await User.countDocuments().catch(() => 0);
-    const activeUsers = await User.countDocuments({ isActive: true }).catch(() => 0);
-    const totalTransactions = await Transaction.countDocuments().catch(() => 0);
-    const totalGambinoIssued = await User.aggregate([
-      { $group: { _id: null, total: { $sum: '$gambinoBalance' } } }
-    ]).catch(() => [{ total: 0 }]);
-
-    const tierCounts = await User.aggregate([
-      { $group: { _id: '$tier', count: { $sum: 1 } } }
-    ]).catch(() => []);
-
-    res.json({
-      success: true,
-      stats: {
-        totalUsers,
-        activeUsers,
-        totalTransactions,
-        totalGambinoIssued: totalGambinoIssued[0]?.total || 0,
-        tierDistribution: tierCounts,
-        serverUptime: process.uptime(),
-        memoryUsage: process.memoryUsage(),
-        timestamp: new Date().toISOString()
-      }
-    });
-  } catch (error) {
-    console.error('❌ Admin stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch admin stats' });
-  }
-});
-
-
-// Add this after your existing routes and before the error handling section
-
-// Onboarding Routes
-app.post('/api/onboarding/step1', async (req, res) => {
-  try {
-    const { firstName, lastName, email, phone, dateOfBirth } = req.body;
-
-    // Validate input
-    if (!firstName || !lastName || !email) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'First name, last name, and email are required' 
-      });
-    }
-
-    if (!email.includes('@')) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Valid email is required' 
-      });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(409).json({ 
-        success: false, 
-        error: 'An account with this email already exists' 
-      });
-    }
-
-    // Generate wallet and recovery phrase
-    const walletAddress = generateWalletAddress();
-    const privateKey = generateWalletAddress(); // Simplified for now
-    const encryptedPrivateKey = await bcrypt.hash(privateKey, 10);
-    
-    // Hash password if provided
-    let hashedPassword = null;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-    }
-    
-    // Generate recovery phrase (simplified)
-    const words = ['abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse', 'access', 'accident'];
-    const recoveryPhrase = words.slice(0, 12).join(' ');
-
-    // Create user with onboarding data
-    const user = new User({
-      email: email.toLowerCase(),
-      phone,
-      walletAddress,
-      privateKey: encryptedPrivateKey,
-      password: hashedPassword,
-    });
-
-    await user.save();
-
-    // Generate temporary token for onboarding process
-    const tempToken = jwt.sign(
-      { 
-        userId: user._id, 
-        step: 1,
-        onboarding: true 
-      },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '1h' }
-    );
-
-    console.log(`📝 Step 1 completed for: ${email}`);
-
-    res.status(201).json({
-      success: true,
-      message: 'Step 1 completed successfully',
-      data: {
-        userId: user._id,
-        walletAddress: user.walletAddress,
-        recoveryPhrase: recoveryPhrase,
-        nextStep: 2
-      },
-      tempToken
-    });
-
-  } catch (error) {
-    console.error('❌ Step 1 error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to process step 1' 
-    });
-  }
-});
-
-app.post('/api/onboarding/step2', async (req, res) => {
-  try {
-    // Verify temp token
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
-    if (!decoded.onboarding || decoded.step !== 1) {
-      return res.status(401).json({ success: false, error: 'Invalid onboarding state' });
-    }
-
-    const { storeId, agreedToTerms, marketingConsent } = req.body;
-
-    // Validate input
-    if (!storeId || !agreedToTerms) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Store selection and terms agreement are required' 
-      });
-    }
-
-    // Update user with step 2 data
-    const user = await User.findByIdAndUpdate(
-      decoded.userId,
-      {
-        lastActivity: new Date()
-      },
-      { new: true }
-    );
-
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'User not found' });
-    }
-
-    // Generate new temp token for step 3
-    const tempToken = jwt.sign(
-      { 
-        userId: user._id, 
-        step: 2,
-        onboarding: true 
-      },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '1h' }
-    );
-
-    console.log(`🏪 Step 2 completed for user: ${user._id}`);
-
-    res.json({
-      success: true,
-      message: 'Step 2 completed successfully',
-      data: {
-        storeId,
-        nextStep: 3
-      },
-      tempToken
-    });
-
-  } catch (error) {
-    console.error('❌ Step 2 error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to process step 2' 
-    });
-  }
-});
-
-app.post('/api/onboarding/step3', async (req, res) => {
-  try {
-    // Verify temp token
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
-    if (!decoded.onboarding || decoded.step !== 2) {
-      return res.status(401).json({ success: false, error: 'Invalid onboarding state' });
-    }
-
-    const { depositAmount, paymentMethod } = req.body;
-
-    // Validate input
-    if (!depositAmount || depositAmount < 10) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Minimum deposit amount is $10' 
-      });
-    }
-
-    const user = await User.findById(decoded.userId);
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'User not found' });
-    }
-
-    // Calculate GAMBINO tokens
-    const currentPrice = 0.001; // $0.001 per GAMBINO
-    const tokensToMint = Math.floor(depositAmount / currentPrice);
-
-    // Process payment (mock for now)
-    // In production, integrate with payment processor here
-
-    // Update user with initial deposit
-    user.gambinoBalance = tokensToMint;
-    user.isActive = true;
-    user.lastActivity = new Date();
-    await user.save();
-
-    // Create transaction record
-    const transaction = new Transaction({
-      userId: user._id,
-      type: 'purchase',
-      amount: tokensToMint,
-      usdAmount: depositAmount,
-      status: 'completed',
-      txHash: `onboarding_${Date.now()}_${user._id}`,
-      metadata: { 
-        paymentMethod, 
-        pricePerToken: currentPrice,
-        onboardingDeposit: true
-      }
-    });
-
-    await transaction.save();
-
-    // Generate full access token
-    const accessToken = jwt.sign(
-      { 
-        userId: user._id, 
-        walletAddress: user.walletAddress,
-        tier: user.tier
-      },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '24h' }
-    );
-
-    console.log(`🎉 Onboarding completed for: ${user.email} - ${tokensToMint} GAMBINO tokens`);
-
-    res.json({
-      success: true,
-      message: 'Account created successfully!',
-      data: {
-        user: {
-          id: user._id,
-          email: user.email,
-          walletAddress: user.walletAddress,
-          gambinoBalance: user.gambinoBalance,
-          gluckScore: user.gluckScore,
-          tier: user.tier
-        },
-        tokensReceived: tokensToMint,
-        pricePerToken: currentPrice,
-        totalPaid: depositAmount,
-        transactionId: transaction._id
-      },
-      accessToken
-    });
-
-  } catch (error) {
-    console.error('❌ Step 3 error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to complete onboarding' 
-    });
-  }
-});
-
-
-// Error handling
-app.use((err, req, res, next) => {
-  console.error('💥 Unhandled error:', err.stack);
-  res.status(500).json({ 
-    error: 'Something went wrong!',
-    ...(process.env.NODE_ENV === 'development' && { details: err.message })
-  });
-});
-
+// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully');
-  await mongoose.connection.close();
-  process.exit(0);
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('❌ Server error:', error);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // Start server
-
-// =================== ONBOARDING ENDPOINTS ===================
-// Temporary user storage for multi-step onboarding
-const temporaryUsers = new Map();
-
-// Helper function to generate temporary tokens
-const generateTempToken = () => {
-  return jwt.sign(
-    { temp: true, timestamp: Date.now() }, 
-    process.env.JWT_SECRET || 'fallback_secret',
-    { expiresIn: '1h' }
-  );
-};
-
-// Step 1: Create user account with password
-app.post('/api/onboarding/step1', async (req, res) => {
-  try {
-    const { firstName, lastName, email, phone, password, dateOfBirth } = req.body;
-
-    // Validation
-    if (!email || !email.includes('@')) {
-      return res.status(400).json({ error: 'Valid email is required' });
-    }
-
-    if (!firstName || !lastName) {
-      return res.status(400).json({ error: 'First name and last name are required' });
-    }
-
-    if (!password || password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists with this email' });
-    }
-
-    // Generate wallet address and keys
-    const walletAddress = generateWalletAddress();
-    const privateKey = generateWalletAddress(); // Simplified
-    const encryptedPrivateKey = await bcrypt.hash(privateKey, 10);
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create temporary token for this onboarding session
-    const tempToken = generateTempToken();
-
-    // Store temporary user data
-    temporaryUsers.set(tempToken, {
-      firstName,
-      lastName,
-      email: email.toLowerCase(),
-      phone,
-      password: hashedPassword,
-      dateOfBirth,
-      walletAddress,
-      privateKey: encryptedPrivateKey,
-      createdAt: new Date(),
-      step: 1
-    });
-
-    console.log(`✅ Step 1 completed for user: ${email}`);
-
-    res.json({
-      success: true,
-      message: 'Account information saved. Please continue to location selection.',
-      tempToken,
-      walletAddress
-    });
-
-  } catch (error) {
-    console.error('❌ Onboarding Step 1 error:', error);
-    res.status(500).json({ error: 'Failed to process account creation' });
-  }
-});
-
-// Step 2: Location and preferences
-app.post('/api/onboarding/step2', async (req, res) => {
-  try {
-    const { storeId, agreedToTerms, marketingConsent } = req.body;
-    const tempToken = req.headers.authorization?.split(' ')[1];
-
-    if (!tempToken || !temporaryUsers.has(tempToken)) {
-      return res.status(401).json({ error: 'Invalid or expired session' });
-    }
-
-    if (!storeId) {
-      return res.status(400).json({ error: 'Please select a location' });
-    }
-
-    if (!agreedToTerms) {
-      return res.status(400).json({ error: 'You must agree to the terms of service' });
-    }
-
-    // Update temporary user data
-    const tempUser = temporaryUsers.get(tempToken);
-    tempUser.storeId = storeId;
-    tempUser.agreedToTerms = agreedToTerms;
-    tempUser.marketingConsent = marketingConsent || false;
-    tempUser.step = 2;
-    temporaryUsers.set(tempToken, tempUser);
-
-    console.log(`🏪 Step 2 completed for user: ${tempUser.email}`);
-
-    res.json({
-      success: true,
-      message: 'Location and preferences saved. Please continue to payment.',
-      selectedStore: storeId
-    });
-
-  } catch (error) {
-    console.error('❌ Onboarding Step 2 error:', error);
-    res.status(500).json({ error: 'Failed to save preferences' });
-  }
-});
-
-// Step 3: Initial deposit and complete account creation
-app.post('/api/onboarding/step3', async (req, res) => {
-  try {
-    const { depositAmount, paymentMethod } = req.body;
-    const tempToken = req.headers.authorization?.split(' ')[1];
-
-    if (!tempToken || !temporaryUsers.has(tempToken)) {
-      return res.status(401).json({ error: 'Invalid or expired session' });
-    }
-
-    const tempUser = temporaryUsers.get(tempToken);
-
-    if (!depositAmount || depositAmount < 10) {
-      return res.status(400).json({ error: 'Minimum deposit is $10' });
-    }
-
-    // Calculate GAMBINO tokens
-    const currentPrice = 0.001; // $0.001 per GAMBINO
-    const tokensToMint = Math.floor(depositAmount / currentPrice);
-
-    // Create the actual user account
-    const user = new User({
-      email: tempUser.email,
-      phone: tempUser.phone,
-      walletAddress: tempUser.walletAddress,
-      privateKey: tempUser.privateKey,
-      password: tempUser.password,
-      gambinoBalance: tokensToMint
-    });
-
-    await user.save();
-
-    // Generate real JWT for the user
-    const authToken = jwt.sign(
-      { userId: user._id, walletAddress: user.walletAddress }, 
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '24h' }
-    );
-
-    // Clean up temporary data
-    temporaryUsers.delete(tempToken);
-
-    console.log(`🎉 Onboarding completed for: ${tempUser.email} - ${tokensToMint} GAMBINO tokens`);
-
-    res.json({
-      success: true,
-      message: 'Welcome to Gambino! Your account has been created successfully.',
-      user: {
-        id: user._id,
-        email: user.email,
-        walletAddress: user.walletAddress,
-        gambinoBalance: user.gambinoBalance,
-        gluckScore: user.gluckScore,
-        tier: user.tier
-      },
-      transaction: {
-        tokensReceived: tokensToMint,
-        depositAmount,
-        pricePerToken: currentPrice
-      },
-      authToken
-    });
-
-  } catch (error) {
-    console.error('❌ Onboarding Step 3 error:', error);
-    res.status(500).json({ error: 'Failed to complete account setup' });
-  }
-});
-
-// =================== END ONBOARDING ENDPOINTS ===================
-
 const startServer = async () => {
   try {
     await connectDB();
-    
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🎰 Gambino Backend Server running on port ${PORT}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-      console.log(`📊 Admin stats: http://localhost:${PORT}/api/admin/stats`);
-      console.log(`🎲 Environment: ${process.env.NODE_ENV || 'development'}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🎰 Gambino Backend running on port ${PORT}`);
+      console.log(`🔗 Health: http://localhost:${PORT}/health`);
     });
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
+  } catch (e) {
+    console.error('❌ Failed to start server:', e);
     process.exit(1);
   }
 };
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('🛑 SIGTERM: closing DB');
+  await mongoose.connection.close();
+  process.exit(0);
+});
 
 startServer();

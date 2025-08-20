@@ -9,6 +9,9 @@ export default function OnboardingPage() {
   const [success, setSuccess] = useState('');
   const [tempToken, setTempToken] = useState('');
 
+  // Use environment variable for API URL
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
   const [formData, setFormData] = useState({
     // Step 1 - Personal Info + Password
     firstName: '',
@@ -18,12 +21,12 @@ export default function OnboardingPage() {
     password: '',
     confirmPassword: '',
     dateOfBirth: '',
-    
+
     // Step 2 - Location & Terms
     storeId: '',
     agreedToTerms: false,
     marketingConsent: false,
-    
+
     // Step 3 - Payment
     depositAmount: 50,
     paymentMethod: 'card'
@@ -57,7 +60,7 @@ export default function OnboardingPage() {
     }
 
     try {
-      const response = await fetch('http://192.168.1.235:3001/api/onboarding/step1', {
+      const response = await fetch(`${apiUrl}/api/onboarding/step1`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -94,7 +97,7 @@ export default function OnboardingPage() {
     setError('');
 
     try {
-      const response = await fetch('http://192.168.1.235:3001/api/onboarding/step2', {
+      const response = await fetch(`${apiUrl}/api/onboarding/step2`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -128,7 +131,7 @@ export default function OnboardingPage() {
     setError('');
 
     try {
-      const response = await fetch('http://192.168.1.235:3001/api/onboarding/step3', {
+      const response = await fetch(`${apiUrl}/api/onboarding/step3`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -146,7 +149,9 @@ export default function OnboardingPage() {
         setCurrentStep(4);
         setSuccess('🎉 Welcome to Gambino! Your account is ready to farm luck!');
         // Store auth token for future use
-        localStorage.setItem('gambino_token', data.authToken);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('gambino_token', data.accessToken);
+        }
       } else {
         setError(data.error || 'Failed to process payment');
       }
@@ -206,7 +211,7 @@ export default function OnboardingPage() {
 
         {/* Step Content */}
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-8">
-          
+
           {/* Step 1: Personal Info + Password */}
           {currentStep === 1 && (
             <div className="space-y-6">
@@ -227,7 +232,7 @@ export default function OnboardingPage() {
                     required
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-gray-300 mb-2">Last Name *</label>
                   <input
