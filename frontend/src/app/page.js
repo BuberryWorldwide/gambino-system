@@ -27,7 +27,6 @@ export default function Home() {
           Farm Luck. Mine Destiny.
         </p>
         
-        {/* Main Action Buttons */}
         <div style={{ 
           display: 'flex', 
           gap: '1rem', 
@@ -44,8 +43,7 @@ export default function Home() {
               borderRadius: '0.5rem',
               fontWeight: 'bold',
               textDecoration: 'none',
-              display: 'inline-block',
-              transition: 'all 0.3s ease'
+              display: 'inline-block'
             }}
           >
             Get Started
@@ -61,15 +59,13 @@ export default function Home() {
               borderRadius: '0.5rem',
               fontWeight: 'bold',
               textDecoration: 'none',
-              display: 'inline-block',
-              transition: 'all 0.3s ease'
+              display: 'inline-block'
             }}
           >
             Login
           </Link>
         </div>
 
-        {/* Secondary Actions */}
         <div style={{ 
           display: 'flex', 
           gap: '1rem', 
@@ -82,37 +78,19 @@ export default function Home() {
               color: '#9CA3AF',
               textDecoration: 'none',
               padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
-              borderRadius: '0.25rem',
-              transition: 'color 0.3s ease'
+              fontSize: '0.9rem'
             }}
           >
             📊 Leaderboard
           </Link>
           
           <Link 
-            href="/about"
-            style={{
-              color: '#9CA3AF',
-              textDecoration: 'none',
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
-              borderRadius: '0.25rem',
-              transition: 'color 0.3s ease'
-            }}
-          >
-            ℹ️ Learn More
-          </Link>
-
-          <Link 
             href="/admin"
             style={{
               color: '#6B7280',
               textDecoration: 'none',
               padding: '0.5rem 1rem',
-              fontSize: '0.8rem',
-              borderRadius: '0.25rem',
-              transition: 'color 0.3s ease'
+              fontSize: '0.8rem'
             }}
           >
             🔧 Admin

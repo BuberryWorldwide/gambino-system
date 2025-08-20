@@ -1,4 +1,4 @@
-// File: /home/popos-dev/projects/gambino-system/frontend/src/app/onboard/page.js
+// File: /opt/gambino/frontend/src/app/onboard/page.js
 import * as entry from '../../../../src/app/onboard/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

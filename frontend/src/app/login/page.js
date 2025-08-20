@@ -24,7 +24,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/users/login`, {
+      const response = await fetch('http://192.168.1.235:3001/api/users/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -35,13 +35,11 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (data.success) {
-        // Store the token
         localStorage.setItem('gambino_token', data.token);
         localStorage.setItem('gambino_user', JSON.stringify(data.user));
         
         setSuccess(true);
         
-        // Redirect to dashboard after successful login
         setTimeout(() => {
           window.location.href = '/dashboard';
         }, 1500);
@@ -73,7 +71,6 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white p-4">
       <div className="max-w-md mx-auto">
         
-        {/* Header */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-block">
             <h1 className="text-4xl font-bold text-yellow-500 mb-2 hover:text-yellow-400 transition-colors">
@@ -83,11 +80,9 @@ export default function LoginPage() {
           <p className="text-gray-400">Welcome back, lucky one</p>
         </div>
 
-        {/* Login Form */}
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-8">
           <h2 className="text-2xl font-bold text-center mb-6">Login to Your Account</h2>
 
-          {/* Error Message */}
           {error && (
             <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4 mb-6">
               <div className="flex items-center">
@@ -98,7 +93,6 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Email */}
             <div>
               <label className="block text-gray-300 mb-2" htmlFor="email">
                 Email Address
@@ -115,7 +109,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Password */}
             <div>
               <label className="block text-gray-300 mb-2" htmlFor="password">
                 Password
@@ -132,7 +125,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Login Button */}
             <button
               type="submit"
               disabled={loading}
@@ -149,7 +141,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Additional Links */}
           <div className="mt-6 text-center space-y-4">
             <div className="text-gray-400">
               Don't have an account?{' '}
@@ -166,7 +157,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Back to Home */}
         <div className="text-center mt-8">
           <Link 
             href="/" 
