@@ -4,6 +4,8 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const GambinoTokenService = require('./src/services/gambinoTokenService');
+
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
@@ -71,6 +73,8 @@ userSchema.index({ email: 1 });
 userSchema.index({ walletAddress: 1 });
 userSchema.index({ gluckScore: -1 });
 const User = mongoose.model('User', userSchema);
+const gambinoService = new GambinoTokenService();
+
 
 // ===== Transaction Schema =====
 const transactionSchema = new mongoose.Schema({
@@ -92,10 +96,9 @@ const Transaction = mongoose.model('Transaction', transactionSchema);
 
 // Helper functions
 const generateWalletAddress = () => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let s = '';
-  for (let i = 0; i < 44; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
-  return s;
+  const { Keypair } = require('@solana/web3.js');
+  const keypair = Keypair.generate();
+  return keypair.publicKey.toString();
 };
 
 const calculateGluckScore = (majorJackpots, minorJackpots, machinesPlayed) => {
@@ -242,6 +245,38 @@ app.post('/api/onboarding/step3', async (req, res) => {
       isVerified: true,
       gambinoBalance: tokens
     });
+
+    // Send real GAMBINO tokens from Community Rewards treasury
+    console.log('💰 User created with real wallet:', user.walletAddress);
+    console.log('🏗️ Creating token account for user...');
+    
+    try {
+      // First create token account for the user
+      const tokenAccountResult = await gambinoService.createUserTokenAccount(user.walletAddress);
+      if (!tokenAccountResult.success) {
+        console.log('⚠️ Failed to create token account, skipping token distribution');
+        throw new Error('Token account creation failed: ' + tokenAccountResult.error);
+      }
+      console.log('✅ Token account created:', tokenAccountResult.tokenAccount);
+      
+      console.log('🎁 Sending', tokens, 'GAMBINO tokens from treasury...');
+      const rewardResult = await gambinoService.distributeRegistrationReward(
+        user._id,
+        user.walletAddress,
+        'userRegistration'
+      );
+      
+      if (rewardResult.success) {
+        console.log('✅ Sent', rewardResult.amount, 'GAMBINO tokens to', user.walletAddress);
+        console.log('🔗 Transaction:', rewardResult.transaction);
+      } else {
+        console.error('❌ Failed to send tokens:', rewardResult.error);
+        // Don't fail registration if token distribution fails
+      }
+    } catch (tokenError) {
+      console.error('❌ Token distribution error:', tokenError.message);
+      // Continue with registration even if token transfer fails
+    }
 
     await Transaction.create({
       userId: user._id,

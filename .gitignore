@@ -43,3 +43,24 @@ frontend/.env.production
 # Docker
 mongodb_data/
 redis_data/
+
+# Security - NEVER commit these
+.env
+.env.local
+.env.production
+secure-vault/
+keys/
+*.backup*
+*-wallet.json
+CREDENTIAL-MIGRATION-REPORT.json
+
+# Sensitive backend files
+backend/.env
+src/services/gambinoTokenService.js.backup*
+server.js.backup*
+
+# Node modules and build files
+node_modules/
+.next/
+dist/
+build/
