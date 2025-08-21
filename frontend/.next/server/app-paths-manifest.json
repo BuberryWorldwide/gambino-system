@@ -2,5 +2,7 @@
   "/page": "app/page.js",
   "/onboard/page": "app/onboard/page.js",
   "/login/page": "app/login/page.js",
-  "/dashboard/page": "app/dashboard/page.js"
+  "/dashboard/page": "app/dashboard/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/admin/store/machines/page": "app/admin/store/machines/page.js"
 }

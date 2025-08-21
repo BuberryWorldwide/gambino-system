@@ -146,6 +146,39 @@ app.get('/health', (req, res) => {
 });
 
 
+
+// Store check-in endpoint
+app.post('/api/stores/checkin', authenticateToken, async (req, res) => {
+  try {
+    const { storeId } = req.body;
+    const userId = req.user.userId;
+    
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID required' });
+    }
+    
+    await User.findByIdAndUpdate(userId, {
+      currentStore: storeId,
+      checkedInAt: new Date(),
+      lastActivity: new Date()
+    });
+    
+    console.log(`✅ User checked into store ${storeId}`);
+    
+    res.json({
+      success: true,
+      message: 'Checked into store successfully',
+      storeId,
+      checkedInAt: new Date()
+    });
+    
+  } catch (error) {
+    console.error('Store check-in error:', error);
+    res.status(500).json({ error: 'Failed to check into store' });
+  }
+});
+
+
 const blockchainTreasuryRoutes = require('./src/routes/blockchainTreasuryRoutes');
 
 
