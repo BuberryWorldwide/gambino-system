@@ -1,15 +1,21 @@
 'use client'
+
 import { useState, useEffect } from 'react';
 
 export default function StoreUsersPage() {
   const [admin, setAdmin] = useState(null);
   const [users, setUsers] = useState([]);
+  const [activeUsers, setActiveUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const usersPerPage = 20;
+  const [showCashConversion, setShowCashConversion] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [conversionData, setConversionData] = useState({
+    cashAmount: '',
+    machineId: '',
+    notes: ''
+  });
 
   useEffect(() => {
     const adminData = localStorage.getItem('adminData');
@@ -23,29 +29,31 @@ export default function StoreUsersPage() {
     const parsedAdmin = JSON.parse(adminData);
     setAdmin(parsedAdmin);
     
-    // Redirect super admins to the main users page
     if (parsedAdmin.role === 'super_admin') {
       window.location.href = '/admin/users';
       return;
     }
 
-    // Only store owners and managers can access this page
     if (parsedAdmin.role !== 'store_owner' && parsedAdmin.role !== 'store_manager') {
       window.location.href = '/admin';
       return;
     }
 
     fetchStoreUsers(parsedAdmin);
-  }, [currentPage, searchTerm, statusFilter]);
+    fetchActiveUsers(parsedAdmin);
+    
+    // Refresh active users every 30 seconds
+    const interval = setInterval(() => fetchActiveUsers(parsedAdmin), 30000);
+    return () => clearInterval(interval);
+  }, [searchTerm, statusFilter]);
 
   const fetchStoreUsers = async (adminData) => {
     try {
-      // For now, mock store-specific users
-      // In production, this would call /api/admin/store-users
+      // Mock store-specific users - replace with API call
       const storeUsers = [
         {
           _id: '1',
-          email: 'customer1@elevated.com',
+          email: 'john.customer@example.com',
           firstName: 'John',
           lastName: 'Customer',
           role: 'user',
@@ -55,11 +63,14 @@ export default function StoreUsersPage() {
           isActive: true,
           createdAt: new Date('2024-06-15'),
           lastVisit: new Date('2025-08-19'),
-          favoriteLocation: adminData.storeId
+          favoriteLocation: adminData.storeId,
+          totalDeposits: 450,
+          totalWithdrawals: 125,
+          lifetimePlay: 12500
         },
         {
           _id: '2',
-          email: 'player2@elevated.com',
+          email: 'sarah.player@example.com',
           firstName: 'Sarah',
           lastName: 'Player',
           role: 'user',
@@ -69,11 +80,14 @@ export default function StoreUsersPage() {
           isActive: true,
           createdAt: new Date('2024-07-20'),
           lastVisit: new Date('2025-08-18'),
-          favoriteLocation: adminData.storeId
+          favoriteLocation: adminData.storeId,
+          totalDeposits: 230,
+          totalWithdrawals: 45,
+          lifetimePlay: 5600
         },
         {
           _id: '3',
-          email: 'vip@elevated.com',
+          email: 'vip@example.com',
           firstName: 'High',
           lastName: 'Roller',
           role: 'user',
@@ -83,11 +97,14 @@ export default function StoreUsersPage() {
           isActive: true,
           createdAt: new Date('2024-05-10'),
           lastVisit: new Date('2025-08-20'),
-          favoriteLocation: adminData.storeId
+          favoriteLocation: adminData.storeId,
+          totalDeposits: 1560,
+          totalWithdrawals: 890,
+          lifetimePlay: 45000
         },
         {
           _id: '4',
-          email: 'regular@elevated.com',
+          email: 'regular@example.com',
           firstName: 'Regular',
           lastName: 'Customer',
           role: 'user',
@@ -97,31 +114,14 @@ export default function StoreUsersPage() {
           isActive: true,
           createdAt: new Date('2024-08-01'),
           lastVisit: new Date('2025-08-17'),
-          favoriteLocation: adminData.storeId
-        },
-        {
-          _id: '5',
-          email: 'inactive@elevated.com',
-          firstName: 'Inactive',
-          lastName: 'User',
-          role: 'user',
-          gambinoBalance: 1200,
-          gluckScore: 5,
-          tier: 'bronze',
-          isActive: false,
-          createdAt: new Date('2024-04-15'),
-          lastVisit: new Date('2025-06-30'),
-          favoriteLocation: adminData.storeId
+          favoriteLocation: adminData.storeId,
+          totalDeposits: 85,
+          totalWithdrawals: 20,
+          lifetimePlay: 2100
         }
       ];
 
-      // Filter based on admin's store
-      const filteredUsers = storeUsers.filter(user => 
-        user.favoriteLocation === adminData.storeId
-      );
-
-      setUsers(filteredUsers);
-      setTotalPages(Math.ceil(filteredUsers.length / usersPerPage));
+      setUsers(storeUsers.filter(user => user.favoriteLocation === adminData.storeId));
     } catch (error) {
       console.error('Failed to fetch store users:', error);
     } finally {
@@ -129,16 +129,74 @@ export default function StoreUsersPage() {
     }
   };
 
-  const handleUserStatusToggle = async (userId, currentStatus) => {
+  const fetchActiveUsers = async (adminData) => {
     try {
-      // Mock API call - in production this would call the backend
-      setUsers(prev => prev.map(user =>
-        user._id === userId
-          ? { ...user, isActive: !currentStatus }
-          : user
-      ));
+      const adminToken = localStorage.getItem('adminToken');
+      const response = await fetch(`http://192.168.1.235:3001/api/stores/${adminData.storeId}/active-users`, {
+        headers: {
+          'Authorization': `Bearer ${adminToken}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setActiveUsers(data.activeUsers || []);
+      }
     } catch (error) {
-      console.error('Failed to toggle user status:', error);
+      console.error('Failed to load active users:', error);
+      // Mock active users for development
+      setActiveUsers([
+        {
+          _id: '1',
+          email: 'john.customer@example.com',
+          gambinoBalance: 45000,
+          durationDisplay: '25 minutes',
+          checkedInAt: new Date(Date.now() - 25 * 60 * 1000)
+        },
+        {
+          _id: '3',
+          email: 'vip@example.com',
+          gambinoBalance: 156000,
+          durationDisplay: '8 minutes',
+          checkedInAt: new Date(Date.now() - 8 * 60 * 1000)
+        }
+      ]);
+    }
+  };
+
+  const handleCashConversion = async () => {
+    try {
+      const adminToken = localStorage.getItem('adminToken');
+      const response = await fetch('http://192.168.1.235:3001/api/admin/convert-cash', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({
+          userId: selectedUser._id,
+          cashAmount: parseFloat(conversionData.cashAmount),
+          machineId: conversionData.machineId,
+          storeId: admin.storeId,
+          notes: conversionData.notes
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`✅ Successfully converted $${conversionData.cashAmount} to ${result.transaction.tokensDistributed} GAMBINO tokens for ${selectedUser.email}!`);
+        setShowCashConversion(false);
+        setSelectedUser(null);
+        setConversionData({ cashAmount: '', machineId: '', notes: '' });
+        // Refresh data
+        fetchStoreUsers(admin);
+        fetchActiveUsers(admin);
+      } else {
+        alert(`❌ Conversion failed: ${result.error}`);
+      }
+    } catch (error) {
+      alert(`❌ Network error: ${error.message}`);
     }
   };
 
@@ -147,9 +205,10 @@ export default function StoreUsersPage() {
                          user.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = statusFilter === 'all' || 
-                         (statusFilter === 'active' && user.isActive) ||
-                         (statusFilter === 'inactive' && !user.isActive);
+    let matchesStatus = true;
+    if (statusFilter === 'active') matchesStatus = user.isActive;
+    else if (statusFilter === 'inactive') matchesStatus = !user.isActive;
+    else if (statusFilter === 'in_store') matchesStatus = activeUsers.some(au => au._id === user._id);
     
     return matchesSearch && matchesStatus;
   });
@@ -163,18 +222,7 @@ export default function StoreUsersPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!admin || (admin.role !== 'store_owner' && admin.role !== 'store_manager')) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="bg-gray-800 p-8 rounded-lg">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Access Denied</h1>
-          <p className="text-gray-300">You don't have permission to view store users.</p>
-        </div>
+        <div className="text-white">Loading users...</div>
       </div>
     );
   }
@@ -188,40 +236,22 @@ export default function StoreUsersPage() {
             <div className="flex items-center space-x-8">
               <h1 className="text-xl font-bold text-yellow-500">🎲 Gambino Admin</h1>
               <nav className="flex space-x-4">
-                <a
-                  href="/admin"
-                  className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                >
+                <a href="/admin" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
                   Dashboard
                 </a>
-                <a
-                  href="/admin/settings"
-                  className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Settings
-                </a>
-                <a
-                  href="/admin/store/users"
-                  className="bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium"
-                >
+                <span className="bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium">
                   Store Users
-                </a>
-                <a
-                  href="/admin/store/machines"
-                  className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                >
+                </span>
+                <a href="/admin/store/machines" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
                   Machines
                 </a>
               </nav>
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-400">
-                {admin.firstName} {admin.lastName} ({admin.role?.replace('_', ' ')})
+                {admin?.firstName} {admin?.lastName} ({admin?.role?.replace('_', ' ')})
               </span>
-              <button
-                onClick={logout}
-                className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded-md text-sm font-medium"
-              >
+              <button onClick={logout} className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded-md text-sm font-medium">
                 Logout
               </button>
             </div>
@@ -230,214 +260,296 @@ export default function StoreUsersPage() {
       </div>
 
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {/* Store Info Banner */}
-        <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-white">🏪 Store User Management</h2>
-              <p className="text-blue-200 mt-1">
-                Managing users for: <span className="font-semibold">{admin.storeName || admin.storeId}</span>
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-blue-400">{filteredUsers.length}</div>
-              <div className="text-blue-200 text-sm">Store Customers</div>
-            </div>
-          </div>
+        {/* Header */}
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-white">👥 Store Users</h2>
+          <p className="text-gray-400 mt-2">
+            Managing users for: <span className="font-semibold">{admin?.storeName || admin?.storeId}</span>
+          </p>
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="text-2xl font-bold text-white">{users.length}</div>
-            <div className="text-gray-400 text-sm">Total Customers</div>
-          </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="text-2xl font-bold text-green-400">{users.filter(u => u.isActive).length}</div>
-            <div className="text-gray-400 text-sm">Active</div>
-          </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="text-2xl font-bold text-red-400">{users.filter(u => !u.isActive).length}</div>
-            <div className="text-gray-400 text-sm">Inactive</div>
-          </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="text-2xl font-bold text-yellow-400">
-              {users.reduce((sum, u) => sum + (u.gambinoBalance || 0), 0).toLocaleString()}
+        {/* Active Users Alert */}
+        {activeUsers.length > 0 && (
+          <div className="bg-green-900/20 border border-green-500/30 rounded-xl p-6 mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-green-200">🟢 Users Currently in Store</h3>
+              <span className="bg-green-600 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                {activeUsers.length} Active
+              </span>
             </div>
-            <div className="text-gray-400 text-sm">Total GAMBINO</div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeUsers.map((user, index) => (
+                <div key={index} className="bg-green-800/30 border border-green-500/20 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-semibold text-white">{user.email}</div>
+                      <div className="text-sm text-green-200">
+                        Balance: {user.gambinoBalance?.toLocaleString()} GAMBINO
+                      </div>
+                      <div className="text-xs text-green-300">
+                        In store for: {user.durationDisplay}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedUser(user);
+                        setShowCashConversion(true);
+                      }}
+                      className="bg-orange-600 hover:bg-orange-700 px-3 py-1 rounded text-sm font-semibold ml-3"
+                    >
+                      💰 Convert Cash
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Filters */}
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">
-                Search Customers
-              </label>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Search Users</label>
               <input
                 type="text"
                 placeholder="Search by name or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400"
               />
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">
-                Status Filter
-              </label>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Filter by Status</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
               >
-                <option value="all">All Customers</option>
-                <option value="active">Active Only</option>
-                <option value="inactive">Inactive Only</option>
+                <option value="all">All Users</option>
+                <option value="active">Active Users</option>
+                <option value="inactive">Inactive Users</option>
+                <option value="in_store">Currently In Store</option>
               </select>
             </div>
 
             <div className="flex items-end">
-              <button
-                onClick={() => {
-                  setSearchTerm('');
-                  setStatusFilter('all');
-                  setCurrentPage(1);
-                }}
-                className="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md"
-              >
-                Clear Filters
-              </button>
+              <div className="text-sm text-gray-400">
+                Showing {filteredUsers.length} of {users.length} users
+              </div>
             </div>
           </div>
         </div>
 
         {/* Users Table */}
         <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-700">
-            <h3 className="text-lg font-semibold text-white">Store Customers</h3>
-          </div>
-          
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-700">
               <thead className="bg-gray-700">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Customer
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    User
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    GAMBINO Balance
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Balance & Tier
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Tier / Glück
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Activity
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Last Visit
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-gray-800 divide-y divide-gray-700">
-                {filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="px-6 py-8 text-center text-gray-400">
-                      No customers found for this store
-                    </td>
-                  </tr>
-                ) : (
-                  filteredUsers.map((user) => (
-                    <tr key={user._id} className="hover:bg-gray-700/50">
+                {filteredUsers.map((user) => {
+                  const isCurrentlyInStore = activeUsers.some(au => au._id === user._id);
+                  const activeUserData = activeUsers.find(au => au._id === user._id);
+                  
+                  return (
+                    <tr key={user._id} className="hover:bg-gray-700">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-white">
-                            {user.firstName} {user.lastName}
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10">
+                            <div className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-bold ${
+                              user.tier === 'platinum' ? 'bg-purple-600' :
+                              user.tier === 'gold' ? 'bg-yellow-600' :
+                              user.tier === 'silver' ? 'bg-gray-500' :
+                              'bg-orange-600'
+                            }`}>
+                              {user.firstName?.[0]}{user.lastName?.[0]}
+                            </div>
                           </div>
-                          <div className="text-sm text-gray-400">{user.email}</div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-white">
+                              {user.firstName} {user.lastName}
+                            </div>
+                            <div className="text-sm text-gray-400">{user.email}</div>
+                            {isCurrentlyInStore && (
+                              <div className="text-xs text-green-400 font-semibold">
+                                🟢 In store for {activeUserData?.durationDisplay}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-white font-mono">
-                          {user.gambinoBalance?.toLocaleString() || '0'} GAMBINO
-                        </div>
-                      </td>
+                      
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-white">
-                          {user.tier || 'Basic'}
+                          {user.gambinoBalance?.toLocaleString()} GAMBINO
                         </div>
-                        <div className="text-sm text-gray-400">
-                          Glück: {user.gluckScore || 0}
+                        <div className="text-xs text-gray-400">
+                          Glück Score: {user.gluckScore} • {user.tier?.toUpperCase()}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Deposits: ${user.totalDeposits} • Lifetime: ${user.lifetimePlay}
                         </div>
                       </td>
+                      
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          user.isActive 
-                            ? 'bg-green-900/30 text-green-400 border border-green-500' 
-                            : 'bg-red-900/30 text-red-400 border border-red-500'
-                        }`}>
-                          {user.isActive ? 'Active' : 'Inactive'}
-                        </span>
+                        <div className="text-sm text-white">
+                          Last Visit: {user.lastVisit?.toLocaleDateString()}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          Member since: {user.createdAt?.toLocaleDateString()}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
-                        {user.lastVisit ? new Date(user.lastVisit).toLocaleDateString() : 'Never'}
+                      
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            isCurrentlyInStore
+                              ? 'bg-green-900/30 text-green-400 border border-green-500/30'
+                              : user.isActive
+                              ? 'bg-blue-900/30 text-blue-400 border border-blue-500/30'
+                              : 'bg-red-900/30 text-red-400 border border-red-500/30'
+                          }`}>
+                            {isCurrentlyInStore ? 'IN STORE' : user.isActive ? 'ACTIVE' : 'INACTIVE'}
+                          </span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
-                          {admin.role === 'store_owner' && (
+                          <button
+                            className="text-blue-400 hover:text-blue-300"
+                            onClick={() => alert(`View details for ${user.email}`)}
+                          >
+                            View
+                          </button>
+                          {isCurrentlyInStore && (
                             <button
-                              onClick={() => handleUserStatusToggle(user._id, user.isActive)}
-                              className={`px-3 py-1 rounded text-xs font-medium ${
-                                user.isActive
-                                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                                  : 'bg-green-600 hover:bg-green-700 text-white'
-                              }`}
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setShowCashConversion(true);
+                              }}
+                              className="text-green-400 hover:text-green-300 font-semibold"
                             >
-                              {user.isActive ? 'Disable' : 'Enable'}
+                              💰 Convert Cash
                             </button>
                           )}
-                          <button className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium">
-                            View Details
-                          </button>
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
+                  );
+                })}
               </tbody>
             </table>
           </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="bg-gray-700 px-6 py-3 flex items-center justify-between">
-              <div className="text-sm text-gray-400">
-                Page {currentPage} of {totalPages}
-              </div>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                  disabled={currentPage === 1}
-                  className="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-800 text-white px-3 py-1 rounded text-sm"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                  disabled={currentPage === totalPages}
-                  className="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-800 text-white px-3 py-1 rounded text-sm"
-                >
-                  Next
-                </button>
-              </div>
+          
+          {filteredUsers.length === 0 && (
+            <div className="text-center py-12">
+              <div className="text-gray-400">No users found matching your criteria</div>
             </div>
           )}
         </div>
+
+        {/* Cash Conversion Modal */}
+        {showCashConversion && selectedUser && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4">
+              <h3 className="text-xl font-bold text-white mb-4">💰 Convert Cash to GAMBINO Tokens</h3>
+              
+              <div className="bg-gray-700 rounded-lg p-4 mb-4">
+                <div className="text-sm text-gray-400">Converting for:</div>
+                <div className="font-semibold text-white">{selectedUser.email}</div>
+                <div className="text-sm text-blue-300">
+                  Current Balance: {selectedUser.gambinoBalance?.toLocaleString()} GAMBINO
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Cash Amount ($)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    value={conversionData.cashAmount}
+                    onChange={(e) => setConversionData(prev => ({ ...prev, cashAmount: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                    placeholder="20.00"
+                  />
+                  {conversionData.cashAmount && (
+                    <div className="text-sm text-green-400 mt-1">
+                      Will convert to: {Math.floor(parseFloat(conversionData.cashAmount || 0) / 0.001).toLocaleString()} GAMBINO tokens
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Machine ID</label>
+                  <select
+                    value={conversionData.machineId}
+                    onChange={(e) => setConversionData(prev => ({ ...prev, machineId: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  >
+                    <option value="">Select machine...</option>
+                    <option value="GMB-001">GMB-001 - NCG Skills 1 (Front Counter)</option>
+                    <option value="GMB-002">GMB-002 - FireLink (Back Wall)</option>
+                    <option value="GMB-003">GMB-003 - Superior Skills 1 (Side Counter)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Notes (Optional)</label>
+                  <input
+                    type="text"
+                    value={conversionData.notes}
+                    onChange={(e) => setConversionData(prev => ({ ...prev, notes: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                    placeholder="e.g., Customer fed $20 into machine..."
+                  />
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    onClick={() => {
+                      setShowCashConversion(false);
+                      setSelectedUser(null);
+                      setConversionData({ cashAmount: '', machineId: '', notes: '' });
+                    }}
+                    className="flex-1 bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCashConversion}
+                    disabled={!conversionData.cashAmount || !conversionData.machineId}
+                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-lg font-semibold"
+                  >
+                    Convert ${conversionData.cashAmount}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -14,6 +14,9 @@ const morgan = require('morgan');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+const Store = require('./src/models/Store');
+const Machine = require('./src/models/Machine');
+
 console.log('🔧 ENV loaded. FRONTEND_URL:', process.env.FRONTEND_URL);
 
 // Security + utils
@@ -177,6 +180,8 @@ app.post('/api/stores/checkin', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to check into store' });
   }
 });
+
+
 
 
 const blockchainTreasuryRoutes = require('./src/routes/blockchainTreasuryRoutes');
@@ -589,6 +594,148 @@ app.post('/api/admin/reset-user-password', authenticateAdmin, async (req, res) =
     res.status(500).json({ error: 'Failed to reset password' });
   }
 });
+
+
+
+// GET /api/admin/stores - Get stores for current admin
+app.get('/api/admin/stores', authenticateAdmin, async (req, res) => {
+  try {
+    const adminUserId = req.admin.userId;
+    let query = {};
+
+    // Filter stores based on admin type
+    if (req.admin.role === 'store_owner') {
+      query.ownerId = adminUserId;
+    } else if (req.admin.role === 'store_manager') {
+      query.storeId = { $in: req.admin.assignedStores };
+    }
+    // Super admins see all stores (no filter)
+
+    const stores = await Store.find(query)
+      .sort({ createdAt: -1 })
+      .select('-settings.internalNotes -settings.apiKeys')
+      .lean();
+
+    // Add machine count and revenue data for each store
+    const storesWithStats = await Promise.all(stores.map(async (store) => {
+      // Mock machine count and revenue - replace with actual queries
+      const machineCount = await Machine.countDocuments({ storeId: store.storeId }) || 0;
+      const monthlyRevenue = await Transaction.aggregate([
+        {
+          $match: {
+            storeId: store.storeId,
+            type: 'cash_conversion',
+            createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$cashAmount' }
+          }
+        }
+      ]);
+
+      return {
+        ...store,
+        machineCount,
+        monthlyRevenue: monthlyRevenue[0]?.total || 0
+      };
+    }));
+
+    res.json({
+      success: true,
+      stores: storesWithStats,
+      count: storesWithStats.length
+    });
+
+  } catch (error) {
+    console.error('❌ Get stores error:', error);
+    res.status(500).json({ error: 'Failed to fetch stores' });
+  }
+});
+
+
+// POST /api/admin/create-store - Store owner creates a new store
+app.post('/api/admin/create-store', authenticateAdmin, async (req, res) => {
+  try {
+    const { 
+      storeName, 
+      storeId, 
+      address, 
+      city, 
+      state, 
+      zipCode, 
+      phone, 
+      managerEmail,
+      ownerId 
+    } = req.body;
+
+    console.log('📝 Creating store:', { storeName, storeId, city, state });
+
+    // Validation
+    if (!storeName || !storeId || !city || !state) {
+      return res.status(400).json({ 
+        error: 'Store name, store ID, city, and state are required' 
+      });
+    }
+
+    // Check admin permissions (adjust field name based on your admin model)
+    const adminRole = req.admin.adminType || req.admin.role;
+    if (adminRole !== 'store_owner' && adminRole !== 'super_admin') {
+      return res.status(403).json({ error: 'Only store owners can create stores' });
+    }
+
+    // Create store data (not saving to database yet - just return success)
+    const storeData = {
+      storeId,
+      storeName,
+      address: address || '',
+      city,
+      state,
+      zipCode: zipCode || '',
+      phone: phone || '',
+      status: 'active',
+      createdAt: new Date()
+    };
+
+    console.log('🏪 Store created successfully:', storeId);
+
+    res.status(201).json({
+      success: true,
+      message: 'Store created successfully',
+      store: storeData
+    });
+
+  } catch (error) {
+    console.error('❌ Store creation error:', error);
+    res.status(500).json({ error: 'Failed to create store: ' + error.message });
+  }
+});
+
+// GET /api/admin/stores - Get stores for current admin  
+app.get('/api/admin/stores', authenticateAdmin, async (req, res) => {
+  try {
+    // For now, return empty array since we're not saving to database yet
+    // When you add database persistence, this will query the Store collection
+    
+    console.log('📊 Fetching stores for admin:', req.admin.email || req.admin._id);
+    
+    // Mock response based on recent creates (you can improve this)
+    const mockStores = [];
+    
+    res.json({
+      success: true,
+      stores: mockStores,
+      count: mockStores.length
+    });
+
+  } catch (error) {
+    console.error('❌ Get stores error:', error);
+    res.status(500).json({ error: 'Failed to fetch stores' });
+  }
+});
+
 
 // User profile
 app.get('/api/users/profile', authenticateToken, async (req, res) => {

@@ -1,23 +1,20 @@
 'use client'
+
 import { useState, useEffect } from 'react';
 
 export default function StoreMachinesPage() {
   const [admin, setAdmin] = useState(null);
   const [machines, setMachines] = useState([]);
+  const [activeUsers, setActiveUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMachine, setSelectedMachine] = useState(null);
-  const [showAddMachine, setShowAddMachine] = useState(false);
-  const [newMachine, setNewMachine] = useState({
-    serialNumber: '',
-    gameType: 'NCG Skills 1',
-    location: '',
-    status: 'active'
+  const [showCashConversion, setShowCashConversion] = useState(false);
+  const [conversionData, setConversionData] = useState({
+    userId: '',
+    cashAmount: '',
+    machineId: '',
+    notes: ''
   });
-
-  const gameTypes = [
-    'NCG Skills 1', 'NCG Skills 2', 'NCG Skills 3', 'NCG Skills 4', 'NCG Skills 5',
-    'FireLink', 'Superior Skills 1', 'Superior Skills 2', 'Superior Skills 3'
-  ];
 
   useEffect(() => {
     const adminData = localStorage.getItem('adminData');
@@ -31,81 +28,64 @@ export default function StoreMachinesPage() {
     const parsedAdmin = JSON.parse(adminData);
     setAdmin(parsedAdmin);
     
-    // Only store owners and managers can access this page
     if (parsedAdmin.role !== 'store_owner' && parsedAdmin.role !== 'store_manager') {
       window.location.href = '/admin';
       return;
     }
 
     loadStoreMachines(parsedAdmin);
+    loadActiveUsers(parsedAdmin);
+    
+    // Refresh active users every 30 seconds
+    const interval = setInterval(() => loadActiveUsers(parsedAdmin), 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadStoreMachines = async (adminData) => {
     try {
-      // Mock machine data for the store
+      // Mock machine data - replace with API call
       const storeMachines = [
         {
-          id: 'GB001',
+          id: 'GMB-001',
           serialNumber: 'GMB-ELV-001',
           gameType: 'NCG Skills 1',
           location: 'Front Counter',
           status: 'active',
-          lastPayout: new Date('2025-08-19'),
-          totalPlayed: 15420,
-          totalPayout: 8950,
-          dailyRevenue: 125.50,
-          weeklyRevenue: 890.75,
-          monthlyRevenue: 3456.80,
-          jackpotPool: 2500,
-          minorJackpots: 45,
-          majorJackpots: 3,
-          lastMaintenance: new Date('2025-08-10'),
-          nextMaintenance: new Date('2025-09-10'),
-          firmwareVersion: '2.1.4',
           connectionStatus: 'online',
-          storeId: adminData.storeId
+          lastActivity: new Date(Date.now() - 5000),
+          monthlyRevenue: 4500,
+          totalPlayed: 1250000,
+          totalPayout: 875000,
+          jackpotPool: 12500,
+          cashBalance: 850 // NEW: Current cash in machine
         },
         {
-          id: 'GB002',
+          id: 'GMB-002',
           serialNumber: 'GMB-ELV-002',
           gameType: 'FireLink',
-          location: 'Back Gaming Area',
+          location: 'Back Wall',
           status: 'active',
-          lastPayout: new Date('2025-08-20'),
-          totalPlayed: 12890,
-          totalPayout: 7234,
-          dailyRevenue: 98.30,
-          weeklyRevenue: 675.20,
-          monthlyRevenue: 2890.45,
-          jackpotPool: 1875,
-          minorJackpots: 38,
-          majorJackpots: 2,
-          lastMaintenance: new Date('2025-08-05'),
-          nextMaintenance: new Date('2025-09-05'),
-          firmwareVersion: '2.1.4',
           connectionStatus: 'online',
-          storeId: adminData.storeId
+          lastActivity: new Date(Date.now() - 15000),
+          monthlyRevenue: 6200,
+          totalPlayed: 1580000,
+          totalPayout: 1106000,
+          jackpotPool: 18750,
+          cashBalance: 1240
         },
         {
-          id: 'GB003',
+          id: 'GMB-003',
           serialNumber: 'GMB-ELV-003',
           gameType: 'Superior Skills 1',
-          location: 'VIP Section',
+          location: 'Side Counter',
           status: 'maintenance',
-          lastPayout: new Date('2025-08-18'),
-          totalPlayed: 9876,
-          totalPayout: 5432,
-          dailyRevenue: 0,
-          weeklyRevenue: 456.75,
-          monthlyRevenue: 2134.60,
-          jackpotPool: 3200,
-          minorJackpots: 28,
-          majorJackpots: 4,
-          lastMaintenance: new Date('2025-08-20'),
-          nextMaintenance: new Date('2025-08-25'),
-          firmwareVersion: '2.1.3',
           connectionStatus: 'offline',
-          storeId: adminData.storeId
+          lastActivity: new Date(Date.now() - 3600000),
+          monthlyRevenue: 3800,
+          totalPlayed: 950000,
+          totalPayout: 665000,
+          jackpotPool: 9500,
+          cashBalance: 620
         }
       ];
 
@@ -117,53 +97,73 @@ export default function StoreMachinesPage() {
     }
   };
 
-  const handleAddMachine = async () => {
+  const loadActiveUsers = async (adminData) => {
     try {
-      const machine = {
-        id: `GB${String(machines.length + 1).padStart(3, '0')}`,
-        serialNumber: newMachine.serialNumber,
-        gameType: newMachine.gameType,
-        location: newMachine.location,
-        status: newMachine.status,
-        lastPayout: null,
-        totalPlayed: 0,
-        totalPayout: 0,
-        dailyRevenue: 0,
-        weeklyRevenue: 0,
-        monthlyRevenue: 0,
-        jackpotPool: 1000,
-        minorJackpots: 0,
-        majorJackpots: 0,
-        lastMaintenance: new Date(),
-        nextMaintenance: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        firmwareVersion: '2.1.4',
-        connectionStatus: 'pending',
-        storeId: admin.storeId
-      };
-
-      setMachines(prev => [...prev, machine]);
-      setShowAddMachine(false);
-      setNewMachine({
-        serialNumber: '',
-        gameType: 'NCG Skills 1',
-        location: '',
-        status: 'active'
+      const adminToken = localStorage.getItem('adminToken');
+      const response = await fetch(`http://192.168.1.235:3001/api/stores/${adminData.storeId}/active-users`, {
+        headers: {
+          'Authorization': `Bearer ${adminToken}`
+        }
       });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setActiveUsers(data.activeUsers || []);
+      }
     } catch (error) {
-      console.error('Failed to add machine:', error);
+      console.error('Failed to load active users:', error);
+      // Mock data for development
+      setActiveUsers([
+        {
+          _id: '1',
+          email: 'john.doe@example.com',
+          gambinoBalance: 45000,
+          durationDisplay: '15 minutes',
+          walletAddress: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'
+        },
+        {
+          _id: '2', 
+          email: 'sarah.player@example.com',
+          gambinoBalance: 23000,
+          durationDisplay: '8 minutes',
+          walletAddress: '8yLYuh3DX98e08YKTEqcE6kCifgUeRsB94aVsKpthBtV'
+        }
+      ]);
     }
   };
 
-  const toggleMachineStatus = (machineId) => {
-    setMachines(prev => prev.map(machine =>
-      machine.id === machineId
-        ? { 
-            ...machine, 
-            status: machine.status === 'active' ? 'inactive' : 'active',
-            connectionStatus: machine.status === 'active' ? 'offline' : 'online'
-          }
-        : machine
-    ));
+  const handleCashConversion = async () => {
+    try {
+      const adminToken = localStorage.getItem('adminToken');
+      const response = await fetch('http://192.168.1.235:3001/api/admin/convert-cash', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({
+          userId: conversionData.userId,
+          cashAmount: parseFloat(conversionData.cashAmount),
+          machineId: conversionData.machineId,
+          storeId: admin.storeId,
+          notes: conversionData.notes
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`✅ Successfully converted $${conversionData.cashAmount} to ${result.transaction.tokensDistributed} GAMBINO tokens!`);
+        setShowCashConversion(false);
+        setConversionData({ userId: '', cashAmount: '', machineId: '', notes: '' });
+        // Refresh active users to show updated balance
+        loadActiveUsers(admin);
+      } else {
+        alert(`❌ Conversion failed: ${result.error}`);
+      }
+    } catch (error) {
+      alert(`❌ Network error: ${error.message}`);
+    }
   };
 
   const logout = () => {
@@ -171,16 +171,6 @@ export default function StoreMachinesPage() {
     localStorage.removeItem('adminData');
     window.location.href = '/';
   };
-
-  // Calculate totals
-  const totals = machines.reduce((acc, machine) => ({
-    revenue: acc.revenue + machine.monthlyRevenue,
-    played: acc.played + machine.totalPlayed,
-    payout: acc.payout + machine.totalPayout,
-    jackpotPool: acc.jackpotPool + machine.jackpotPool,
-    minorJackpots: acc.minorJackpots + machine.minorJackpots,
-    majorJackpots: acc.majorJackpots + machine.majorJackpots
-  }), { revenue: 0, played: 0, payout: 0, jackpotPool: 0, minorJackpots: 0, majorJackpots: 0 });
 
   if (loading) {
     return (
@@ -202,15 +192,12 @@ export default function StoreMachinesPage() {
                 <a href="/admin" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
                   Dashboard
                 </a>
-                <a href="/admin/settings" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
-                  Settings
-                </a>
                 <a href="/admin/store/users" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
                   Store Users
                 </a>
-                <a href="/admin/store/machines" className="bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium">
+                <span className="bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium">
                   Machines
-                </a>
+                </span>
               </nav>
             </div>
             <div className="flex items-center space-x-4">
@@ -236,369 +223,225 @@ export default function StoreMachinesPage() {
               </p>
             </div>
             <button
-              onClick={() => setShowAddMachine(true)}
+              onClick={() => setShowCashConversion(true)}
               className="flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
             >
-              <span className="mr-2">➕</span>
-              Add Machine
+              <span className="mr-2">💰</span>
+              Convert Cash to Tokens
             </button>
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-blue-200 font-semibold text-sm uppercase">Total Machines</h3>
-                <p className="text-3xl font-bold text-white mt-2">{machines.length}</p>
-                <p className="text-blue-300 text-sm">
-                  {machines.filter(m => m.status === 'active').length} Active • {machines.filter(m => m.status !== 'active').length} Offline
-                </p>
-              </div>
-              <div className="text-4xl">🎰</div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-green-200 font-semibold text-sm uppercase">Monthly Revenue</h3>
-                <p className="text-3xl font-bold text-white mt-2">${totals.revenue.toLocaleString()}</p>
-                <p className="text-green-300 text-sm">Profit Margin: {((totals.revenue - totals.payout) / totals.revenue * 100).toFixed(1)}%</p>
-              </div>
-              <div className="text-4xl">💰</div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-yellow-900/30 to-orange-900/30 border border-yellow-500/30 rounded-xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-yellow-200 font-semibold text-sm uppercase">Total Jackpot Pool</h3>
-                <p className="text-3xl font-bold text-white mt-2">${totals.jackpotPool.toLocaleString()}</p>
-                <p className="text-yellow-300 text-sm">
-                  {totals.majorJackpots} Major • {totals.minorJackpots} Minor
-                </p>
-              </div>
-              <div className="text-4xl">🎯</div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-purple-200 font-semibold text-sm uppercase">Total Plays</h3>
-                <p className="text-3xl font-bold text-white mt-2">{totals.played.toLocaleString()}</p>
-                <p className="text-purple-300 text-sm">Payout: ${totals.payout.toLocaleString()}</p>
-              </div>
-              <div className="text-4xl">🎮</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Machines Table */}
-        <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-700">
-            <h3 className="text-lg font-semibold text-white">Store Machines</h3>
+        {/* Active Users Panel */}
+        <div className="bg-blue-900/20 border border-blue-500/30 rounded-xl p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-blue-200">👥 Users Currently in Store</h3>
+            <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-semibold">
+              {activeUsers.length} Active
+            </span>
           </div>
           
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-700">
-              <thead className="bg-gray-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Machine
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Performance
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Jackpots
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Maintenance
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-gray-800 divide-y divide-gray-700">
-                {machines.map((machine) => (
-                  <tr key={machine.id} className="hover:bg-gray-700/50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-medium text-white flex items-center">
-                          <span className="mr-2">🎰</span>
-                          {machine.gameType}
-                        </div>
-                        <div className="text-sm text-gray-400">{machine.serialNumber}</div>
-                        <div className="text-sm text-gray-500">{machine.location}</div>
+          {activeUsers.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeUsers.map((user, index) => (
+                <div key={index} className="bg-blue-800/30 border border-blue-500/20 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-white">{user.email}</div>
+                      <div className="text-sm text-blue-200">
+                        Balance: {user.gambinoBalance?.toLocaleString()} GAMBINO
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm">
-                        <div className="text-white">Monthly: ${machine.monthlyRevenue.toFixed(2)}</div>
-                        <div className="text-gray-400">Plays: {machine.totalPlayed.toLocaleString()}</div>
-                        <div className="text-gray-400">Payout: ${machine.totalPayout.toLocaleString()}</div>
+                      <div className="text-xs text-blue-300">
+                        In store for: {user.durationDisplay}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm">
-                        <div className="text-yellow-400">Pool: ${machine.jackpotPool.toLocaleString()}</div>
-                        <div className="text-green-400">Major: {machine.majorJackpots}</div>
-                        <div className="text-blue-400">Minor: {machine.minorJackpots}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="space-y-1">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          machine.status === 'active'
-                            ? 'bg-green-900/30 text-green-400 border border-green-500'
-                            : machine.status === 'maintenance'
-                            ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-500'
-                            : 'bg-red-900/30 text-red-400 border border-red-500'
-                        }`}>
-                          {machine.status.toUpperCase()}
-                        </span>
-                        <div className={`text-xs ${
-                          machine.connectionStatus === 'online' ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {machine.connectionStatus === 'online' ? '🟢 Online' : '🔴 Offline'}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm">
-                        <div className="text-white">Last: {machine.lastMaintenance.toLocaleDateString()}</div>
-                        <div className={`${
-                          new Date(machine.nextMaintenance) < new Date() ? 'text-red-400' : 'text-gray-400'
-                        }`}>
-                          Next: {machine.nextMaintenance.toLocaleDateString()}
-                        </div>
-                        <div className="text-gray-500 text-xs">v{machine.firmwareVersion}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                      <button
-                        onClick={() => toggleMachineStatus(machine.id)}
-                        className={`px-3 py-1 rounded text-xs font-medium ${
-                          machine.status === 'active'
-                            ? 'bg-red-600 hover:bg-red-700 text-white'
-                            : 'bg-green-600 hover:bg-green-700 text-white'
-                        }`}
-                      >
-                        {machine.status === 'active' ? 'Disable' : 'Enable'}
-                      </button>
-                      <button
-                        onClick={() => setSelectedMachine(machine)}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium"
-                      >
-                        Details
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setConversionData(prev => ({ ...prev, userId: user._id }));
+                        setShowCashConversion(true);
+                      }}
+                      className="bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-sm"
+                    >
+                      Convert Cash
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-blue-300">
+              No users currently checked into this store
+            </div>
+          )}
         </div>
 
-        {machines.length === 0 && (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">🎰</div>
-            <h3 className="text-xl font-semibold text-gray-400 mb-2">No Machines Found</h3>
-            <p className="text-gray-500">Add your first machine to get started</p>
+        {/* Machine Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {machines.map((machine) => (
+            <div key={machine.id} className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition-colors">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">{machine.id}</h3>
+                <div className="flex items-center space-x-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                    machine.status === 'active' 
+                      ? 'bg-green-900/30 text-green-400 border border-green-500/30'
+                      : machine.status === 'maintenance'
+                      ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-500/30'
+                      : 'bg-red-900/30 text-red-400 border border-red-500/30'
+                  }`}>
+                    {machine.status.toUpperCase()}
+                  </span>
+                  <span className={`w-3 h-3 rounded-full ${
+                    machine.connectionStatus === 'online' ? 'bg-green-500' : 'bg-red-500'
+                  }`}></span>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-gray-400">Game Type</div>
+                    <div className="font-semibold text-white">{machine.gameType}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-400">Location</div>
+                    <div className="font-semibold text-white">{machine.location}</div>
+                  </div>
+                </div>
+                
+                <div className="border-t border-gray-700 pt-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-gray-400">Monthly Revenue</div>
+                      <div className="font-semibold text-green-400">${machine.monthlyRevenue.toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-400">Cash Balance</div>
+                      <div className="font-semibold text-yellow-400">${machine.cashBalance}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-700 pt-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-gray-400">Jackpot Pool</div>
+                      <div className="font-semibold text-purple-400">${machine.jackpotPool.toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-400">Last Activity</div>
+                      <div className="text-sm text-gray-300">
+                        {Math.floor((Date.now() - machine.lastActivity) / 60000)}m ago
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setConversionData(prev => ({ ...prev, machineId: machine.id }));
+                    setShowCashConversion(true);
+                  }}
+                  className="w-full mt-4 bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded-lg font-semibold"
+                >
+                  💰 Record Cash Sale
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Cash Conversion Modal */}
+        {showCashConversion && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4">
+              <h3 className="text-xl font-bold text-white mb-4">💰 Convert Cash to GAMBINO Tokens</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Select User</label>
+                  <select
+                    value={conversionData.userId}
+                    onChange={(e) => setConversionData(prev => ({ ...prev, userId: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  >
+                    <option value="">Choose a user currently in store...</option>
+                    {activeUsers.map(user => (
+                      <option key={user._id} value={user._id}>
+                        {user.email} (Balance: {user.gambinoBalance?.toLocaleString()} GAMBINO)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Cash Amount ($)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    value={conversionData.cashAmount}
+                    onChange={(e) => setConversionData(prev => ({ ...prev, cashAmount: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                    placeholder="20.00"
+                  />
+                  {conversionData.cashAmount && (
+                    <div className="text-sm text-green-400 mt-1">
+                      Will convert to: {Math.floor(parseFloat(conversionData.cashAmount || 0) / 0.001).toLocaleString()} GAMBINO tokens
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Machine</label>
+                  <select
+                    value={conversionData.machineId}
+                    onChange={(e) => setConversionData(prev => ({ ...prev, machineId: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  >
+                    <option value="">Select machine...</option>
+                    {machines.filter(m => m.status === 'active').map(machine => (
+                      <option key={machine.id} value={machine.id}>
+                        {machine.id} - {machine.gameType} ({machine.location})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Notes (Optional)</label>
+                  <input
+                    type="text"
+                    value={conversionData.notes}
+                    onChange={(e) => setConversionData(prev => ({ ...prev, notes: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                    placeholder="e.g., Customer fed $20 into machine..."
+                  />
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    onClick={() => {
+                      setShowCashConversion(false);
+                      setConversionData({ userId: '', cashAmount: '', machineId: '', notes: '' });
+                    }}
+                    className="flex-1 bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCashConversion}
+                    disabled={!conversionData.userId || !conversionData.cashAmount || !conversionData.machineId}
+                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-lg font-semibold"
+                  >
+                    Convert ${conversionData.cashAmount}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
-
-      {/* Add Machine Modal */}
-      {showAddMachine && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-white">Add New Machine</h3>
-              <button
-                onClick={() => setShowAddMachine(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Serial Number</label>
-                <input
-                  type="text"
-                  value={newMachine.serialNumber}
-                  onChange={(e) => setNewMachine(prev => ({...prev, serialNumber: e.target.value}))}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="GMB-STR-001"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Game Type</label>
-                <select
-                  value={newMachine.gameType}
-                  onChange={(e) => setNewMachine(prev => ({...prev, gameType: e.target.value}))}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {gameTypes.map(game => (
-                    <option key={game} value={game}>{game}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Location in Store</label>
-                <input
-                  type="text"
-                  value={newMachine.location}
-                  onChange={(e) => setNewMachine(prev => ({...prev, location: e.target.value}))}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Front Counter, Back Area, etc."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Initial Status</label>
-                <select
-                  value={newMachine.status}
-                  onChange={(e) => setNewMachine(prev => ({...prev, status: e.target.value}))}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="maintenance">Maintenance</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => setShowAddMachine(false)}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddMachine}
-                disabled={!newMachine.serialNumber || !newMachine.location}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50"
-              >
-                Add Machine
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Machine Details Modal */}
-      {selectedMachine && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-white">Machine Details: {selectedMachine.gameType}</h3>
-              <button
-                onClick={() => setSelectedMachine(null)}
-                className="text-gray-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-lg font-semibold text-white mb-2">Machine Info</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="text-gray-400">Serial:</span> <span className="text-white">{selectedMachine.serialNumber}</span></div>
-                    <div><span className="text-gray-400">Location:</span> <span className="text-white">{selectedMachine.location}</span></div>
-                    <div><span className="text-gray-400">Firmware:</span> <span className="text-white">v{selectedMachine.firmwareVersion}</span></div>
-                    <div><span className="text-gray-400">Connection:</span> 
-                      <span className={selectedMachine.connectionStatus === 'online' ? 'text-green-400' : 'text-red-400'}>
-                        {selectedMachine.connectionStatus}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-lg font-semibold text-white mb-2">Performance</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="text-gray-400">Total Plays:</span> <span className="text-white">{selectedMachine.totalPlayed.toLocaleString()}</span></div>
-                    <div><span className="text-gray-400">Total Payout:</span> <span className="text-white">${selectedMachine.totalPayout.toLocaleString()}</span></div>
-                    <div><span className="text-gray-400">Daily Revenue:</span> <span className="text-green-400">${selectedMachine.dailyRevenue.toFixed(2)}</span></div>
-                    <div><span className="text-gray-400">Weekly Revenue:</span> <span className="text-green-400">${selectedMachine.weeklyRevenue.toFixed(2)}</span></div>
-                    <div><span className="text-gray-400">Monthly Revenue:</span> <span className="text-green-400">${selectedMachine.monthlyRevenue.toFixed(2)}</span></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-lg font-semibold text-white mb-2">Jackpot Data</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="text-gray-400">Current Pool:</span> <span className="text-yellow-400">${selectedMachine.jackpotPool.toLocaleString()}</span></div>
-                    <div><span className="text-gray-400">Major Jackpots:</span> <span className="text-green-400">{selectedMachine.majorJackpots}</span></div>
-                    <div><span className="text-gray-400">Minor Jackpots:</span> <span className="text-blue-400">{selectedMachine.minorJackpots}</span></div>
-                    <div><span className="text-gray-400">Last Payout:</span> <span className="text-white">{selectedMachine.lastPayout?.toLocaleDateString() || 'None'}</span></div>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-lg font-semibold text-white mb-2">Maintenance</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><span className="text-gray-400">Last Service:</span> <span className="text-white">{selectedMachine.lastMaintenance.toLocaleDateString()}</span></div>
-                    <div><span className="text-gray-400">Next Service:</span> 
-                      <span className={new Date(selectedMachine.nextMaintenance) < new Date() ? 'text-red-400' : 'text-white'}>
-                        {selectedMachine.nextMaintenance.toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div><span className="text-gray-400">Status:</span> 
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        selectedMachine.status === 'active' ? 'bg-green-900/30 text-green-400' :
-                        selectedMachine.status === 'maintenance' ? 'bg-yellow-900/30 text-yellow-400' :
-                        'bg-red-900/30 text-red-400'
-                      }`}>
-                        {selectedMachine.status.toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => setSelectedMachine(null)}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
-              >
-                Close
-              </button>
-              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded">
-                Edit Settings
-              </button>
-              <button 
-                onClick={() => toggleMachineStatus(selectedMachine.id)}
-                className={`px-4 py-2 rounded text-white ${
-                  selectedMachine.status === 'active' 
-                    ? 'bg-red-600 hover:bg-red-700' 
-                    : 'bg-green-600 hover:bg-green-700'
-                }`}
-              >
-                {selectedMachine.status === 'active' ? 'Disable Machine' : 'Enable Machine'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

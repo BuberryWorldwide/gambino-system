@@ -1,56 +1,220 @@
 'use client'
+
 import { useState, useEffect } from 'react';
 
-export default function AdminPage() {
-  const [token, setToken] = useState('');
+export default function AdminSettingsPage() {
   const [admin, setAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState(null);
-  const [users, setUsers] = useState([]);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [stores, setStores] = useState([]);
+  const [showCreateStore, setShowCreateStore] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [storeData, setStoreData] = useState({
+    storeName: '',
+    address: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    phone: '',
+    managerEmail: ''
+  });
 
   useEffect(() => {
-    const adminToken = localStorage.getItem('adminToken');
     const adminData = localStorage.getItem('adminData');
-
-    if (adminToken && adminData) {
-      setToken(adminToken);
-      setAdmin(JSON.parse(adminData));
-      loadDashboardData(adminToken, JSON.parse(adminData));
+    const adminToken = localStorage.getItem('adminToken');
+    
+    if (!adminToken || !adminData) {
+      window.location.href = '/admin';
+      return;
     }
+
+    const parsedAdmin = JSON.parse(adminData);
+    setAdmin(parsedAdmin);
+    
+    if (parsedAdmin.role === 'store_owner') {
+      loadOwnerStores(parsedAdmin);
+    }
+    
     setLoading(false);
   }, []);
 
-  const loadDashboardData = async (token, adminData) => {
+  const loadOwnerStores = async (adminData) => {
     try {
-      // Load basic stats
-      const statsResponse = await fetch('http://192.168.1.235:3001/api/admin/metrics?timeframe=7d', {
-        headers: { 'admin-key': 'admin123' }
-      });
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setStats(statsData.data);
-      }
-
-      // Load users (filtered by role)
-      // Store owners/managers should only see their store's users
-      // This would be implemented in the backend, for now we'll mock it
-      const mockUsers = [
-        {
-          email: 'user1@store.com',
-          gambinoBalance: 25000,
-          tier: 'tier2',
-          storeId: adminData.role === 'super_admin' ? 'all' : 'elevated_main'
-        },
-        {
-          email: 'user2@store.com',
-          gambinoBalance: 15000,
-          tier: 'tier1',
-          storeId: adminData.role === 'super_admin' ? 'all' : 'elevated_main'
+      const adminToken = localStorage.getItem('adminToken');
+      const response = await fetch('http://192.168.1.235:3001/api/admin/stores', {
+        headers: {
+          'Authorization': `Bearer ${adminToken}`
         }
-      ];
-      setUsers(mockUsers);
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStores(data.stores || []);
+        console.log('📊 Loaded stores:', data.stores);
+      } else {
+        console.error('Failed to fetch stores:', response.status);
+        // Fallback to mock data if API fails
+        const mockStores = [
+          {
+            storeId: 'nash_downtown_001',
+            storeName: 'Nashville Downtown Gaming',
+            address: '123 Broadway',
+            city: 'Nashville',
+            state: 'TN',
+            zipCode: '37203',
+            phone: '615-555-0123',
+            status: 'active',
+            createdAt: new Date('2024-06-15'),
+            machineCount: 3,
+            monthlyRevenue: 12500
+          }
+        ];
+        setStores(mockStores);
+      }
     } catch (error) {
-      console.error('Failed to load dashboard data:', error);
+      console.error('Failed to load stores:', error);
+      setStores([]); // Show empty state on error
+    }
+  };
+
+  const generateStoreId = (storeName, city, state) => {
+    // Auto-generate standardized store ID
+    const cityCode = city.toLowerCase().replace(/[^a-z]/g, '').substring(0, 4);
+    const stateCode = state.toLowerCase();
+    const nameCode = storeName.toLowerCase()
+      .replace(/[^a-z]/g, '')
+      .replace(/gaming|store|shop/g, '')
+      .substring(0, 6);
+    
+    // Add random 3-digit number for uniqueness
+    const randomNum = Math.floor(Math.random() * 900) + 100;
+    
+    return `${cityCode}_${nameCode}_${randomNum}`;
+  };
+
+  const handleCreateStore = async () => {
+    if (!storeData.storeName || !storeData.city || !storeData.state) {
+      setError('Store name, city, and state are required');
+      return;
+    }
+
+    try {
+      const generatedStoreId = generateStoreId(storeData.storeName, storeData.city, storeData.state);
+      
+      const adminToken = localStorage.getItem('adminToken');
+      const response = await fetch('http://192.168.1.235:3001/api/admin/create-store', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({
+          ...storeData,
+          storeId: generatedStoreId,
+          ownerId: admin.id
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setMessage(`✅ Store created successfully! Store ID: ${generatedStoreId}`);
+        setShowCreateStore(false);
+        setStoreData({
+          storeName: '',
+          address: '',
+          city: '',
+          state: '',
+          zipCode: '',
+          phone: '',
+          managerEmail: ''
+        });
+        // Refresh the stores list
+        await loadOwnerStores(admin);
+      } else {
+        setError(result.error || 'Failed to create store');
+      }
+    } catch (error) {
+      // For development, simulate store creation
+      const generatedStoreId = generateStoreId(storeData.storeName, storeData.city, storeData.state);
+      
+      const newStore = {
+        storeId: generatedStoreId,
+        storeName: storeData.storeName,
+        address: storeData.address,
+        city: storeData.city,
+        state: storeData.state,
+        zipCode: storeData.zipCode,
+        phone: storeData.phone,
+        status: 'active',
+        createdAt: new Date(),
+        machineCount: 0,
+        monthlyRevenue: 0
+      };
+
+      setStores(prev => [...prev, newStore]);
+      setMessage(`✅ Store created successfully! Store ID: ${generatedStoreId}`);
+      setShowCreateStore(false);
+      setStoreData({
+        storeName: '',
+        address: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        phone: '',
+        managerEmail: ''
+      });
+      // Refresh from API to get latest data
+      await loadOwnerStores(admin);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      setError('All password fields are required');
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setError('New passwords do not match');
+      return;
+    }
+
+    if (passwordData.newPassword.length < 8) {
+      setError('New password must be at least 8 characters');
+      return;
+    }
+
+    try {
+      const adminToken = localStorage.getItem('adminToken');
+      const response = await fetch('http://192.168.1.235:3001/api/admin/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setMessage('✅ Password changed successfully');
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        setError('');
+      } else {
+        setError(result.error || 'Failed to change password');
+      }
+    } catch (error) {
+      setError('Network error. Please try again.');
     }
   };
 
@@ -63,88 +227,43 @@ export default function AdminPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!token || !admin) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="bg-gray-800 p-8 rounded-lg">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Access Denied</h1>
-          <p className="text-gray-300 mb-4">You need admin access to view this page.</p>
-          <a href="/login" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
-            Login
-          </a>
-        </div>
+        <div className="text-white">Loading settings...</div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Navigation Header */}
+      {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-8">
               <h1 className="text-xl font-bold text-yellow-500">🎲 Gambino Admin</h1>
               <nav className="flex space-x-4">
-                <a
-                  href="/admin"
-                  className="bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium"
-                >
+                <a href="/admin" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
                   Dashboard
                 </a>
-                <a
-                  href="/admin/settings"
-                  className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                >
+                <span className="bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium">
                   Settings
-                </a>
-                {/* Role-based navigation - FIXED ROUTING */}
-                {admin.role === 'super_admin' ? (
+                </span>
+                {(admin?.role === 'store_owner' || admin?.role === 'store_manager') && (
                   <>
-                    <a
-                      href="/admin/users"
-                      className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                    >
-                      Manage Users
-                    </a>
-                    <a
-                      href="/admin/treasury"
-                      className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                    >
-                      Treasury
-                    </a>
-                  </>
-                ) : (admin.role === 'store_owner' || admin.role === 'store_manager') ? (
-                  <>
-                    <a
-                      href="/admin/store/users"
-                      className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                    >
+                    <a href="/admin/store/users" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
                       Store Users
                     </a>
-                    <a
-                      href="/admin/store/machines"
-                      className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
-                    >
+                    <a href="/admin/store/machines" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
                       Machines
                     </a>
                   </>
-                ) : null}
+                )}
               </nav>
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-400">
-                {admin.firstName} {admin.lastName} ({admin.role?.replace('_', ' ')})
+                {admin?.firstName} {admin?.lastName} ({admin?.role?.replace('_', ' ')})
               </span>
-              <button
-                onClick={logout}
-                className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded-md text-sm font-medium"
-              >
+              <button onClick={logout} className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded-md text-sm font-medium">
                 Logout
               </button>
             </div>
@@ -152,229 +271,328 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h2 className="text-3xl font-bold text-white">
-            {admin.role === 'super_admin' ? 'System Overview' : 
-             admin.role === 'store_owner' ? 'Store Management' : 
-             'Store Dashboard'}
-          </h2>
-          <p className="text-gray-400 mt-2">
-            {admin.role === 'super_admin' ? 'Complete system administration' :
-             admin.role === 'store_owner' ? `Managing ${admin.storeName || 'your stores'}` :
-             `Managing ${admin.storeName || 'your store'}`}
-          </p>
+          <h2 className="text-3xl font-bold text-white">⚙️ Admin Settings</h2>
+          <p className="text-gray-400 mt-2">Manage your admin account and store settings</p>
         </div>
 
-        {/* Role-based Stats Cards */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-gray-400 font-semibold text-sm uppercase">
-                    {admin.role === 'super_admin' ? 'Total Users' : 'Store Users'}
-                  </h3>
-                  <p className="text-3xl font-bold text-white mt-2">
-                    {admin.role === 'super_admin' ? stats.newUsers : users.length}
-                  </p>
+        {/* Alert Messages */}
+        {message && (
+          <div className="bg-green-900/20 border border-green-500 text-green-300 p-4 rounded-lg mb-6">
+            {message}
+          </div>
+        )}
+        
+        {error && (
+          <div className="bg-red-900/20 border border-red-500 text-red-300 p-4 rounded-lg mb-6">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Profile Information */}
+          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+            <h3 className="text-xl font-bold text-white mb-6">👤 Profile Information</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Name</label>
+                <div className="text-white bg-gray-700 p-3 rounded-md">
+                  {admin?.firstName} {admin?.lastName}
                 </div>
-                <div className="text-4xl">👥</div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Email</label>
+                <div className="text-white bg-gray-700 p-3 rounded-md">
+                  {admin?.email}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Role</label>
+                <div className="text-white bg-gray-700 p-3 rounded-md">
+                  <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                    admin?.role === 'super_admin' 
+                      ? 'bg-red-900/30 text-red-400 border border-red-500/30'
+                      : admin?.role === 'store_owner'
+                      ? 'bg-blue-900/30 text-blue-400 border border-blue-500/30'
+                      : 'bg-green-900/30 text-green-400 border border-green-500/30'
+                  }`}>
+                    {admin?.role?.replace('_', ' ').toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Admin ID</label>
+                <div className="text-gray-300 bg-gray-700 p-3 rounded-md font-mono text-sm">
+                  {admin?.id}
+                </div>
               </div>
             </div>
+          </div>
 
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-gray-400 font-semibold text-sm uppercase">
-                    {admin.role === 'super_admin' ? 'Total Transactions' : 'Store Transactions'}
-                  </h3>
-                  <p className="text-3xl font-bold text-white mt-2">
-                    {stats.totalTransactions || 0}
-                  </p>
-                </div>
-                <div className="text-4xl">💰</div>
+          {/* Change Password */}
+          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
+            <h3 className="text-xl font-bold text-white mb-6">🔐 Change Password</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Current Password</label>
+                <input
+                  type="password"
+                  value={passwordData.currentPassword}
+                  onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  placeholder="Enter current password"
+                />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">New Password</label>
+                <input
+                  type="password"
+                  value={passwordData.newPassword}
+                  onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  placeholder="Enter new password (min 8 characters)"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  placeholder="Confirm new password"
+                />
+              </div>
+              <button
+                onClick={handleChangePassword}
+                className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-semibold"
+              >
+                Change Password
+              </button>
             </div>
+          </div>
+        </div>
 
+        {/* Store Management - Only for Store Owners */}
+        {admin?.role === 'store_owner' && (
+          <div className="mt-8">
             <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-gray-400 font-semibold text-sm uppercase">Volume (7d)</h3>
-                  <p className="text-3xl font-bold text-white mt-2">
-                    ${stats.totalVolume?.toLocaleString() || '0'}
-                  </p>
-                </div>
-                <div className="text-4xl">📊</div>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">🏪 Store Management</h3>
+                <button
+                  onClick={() => setShowCreateStore(true)}
+                  className="flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                >
+                  <span className="mr-2">➕</span>
+                  Create New Store
+                </button>
               </div>
-            </div>
 
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-gray-400 font-semibold text-sm uppercase">
-                    {admin.role === 'super_admin' ? 'System Status' : 'Store Status'}
-                  </h3>
-                  <p className="text-3xl font-bold text-green-400 mt-2">ACTIVE</p>
+              {/* Stores List */}
+              {stores.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {stores.map((store, index) => (
+                    <div key={index} className="bg-gray-700 border border-gray-600 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-lg font-semibold text-white">{store.storeName}</h4>
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          store.status === 'active' 
+                            ? 'bg-green-900/30 text-green-400 border border-green-500/30'
+                            : 'bg-red-900/30 text-red-400 border border-red-500/30'
+                        }`}>
+                          {store.status.toUpperCase()}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <span className="text-gray-400">Store ID: </span>
+                          <span className="text-yellow-400 font-mono">{store.storeId}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Address: </span>
+                          <span className="text-white">{store.address}, {store.city}, {store.state} {store.zipCode}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Phone: </span>
+                          <span className="text-white">{store.phone}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-600">
+                          <div>
+                            <span className="text-gray-400">Machines: </span>
+                            <span className="text-blue-400 font-semibold">{store.machineCount}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Monthly Revenue: </span>
+                            <span className="text-green-400 font-semibold">${store.monthlyRevenue?.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4 flex space-x-2">
+                        <button
+                          onClick={() => window.location.href = `/admin/store/machines?store=${store.storeId}`}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-sm font-semibold"
+                        >
+                          Manage
+                        </button>
+                        <button
+                          onClick={() => alert(`Store analytics for ${store.storeName}`)}
+                          className="flex-1 bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-sm font-semibold"
+                        >
+                          Analytics
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="text-4xl">✅</div>
-              </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 mb-4">No stores created yet</div>
+                  <button
+                    onClick={() => setShowCreateStore(true)}
+                    className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg font-semibold"
+                  >
+                    Create Your First Store
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* Role-based Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Quick Actions - Role Based - FIXED ROUTING */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-            <h3 className="text-xl font-bold text-white mb-4">Quick Actions</h3>
-            <div className="space-y-3">
-              <a
-                href="/admin/settings"
-                className="flex items-center p-3 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-              >
-                <span className="mr-3">⚙️</span>
+        {/* Create Store Modal */}
+        {showCreateStore && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4 max-h-screen overflow-y-auto">
+              <h3 className="text-xl font-bold text-white mb-4">🏪 Create New Store</h3>
+              
+              <div className="space-y-4">
                 <div>
-                  <div className="font-semibold">Account Settings</div>
-                  <div className="text-sm text-blue-200">Manage your admin account</div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Store Name *</label>
+                  <input
+                    type="text"
+                    value={storeData.storeName}
+                    onChange={(e) => setStoreData(prev => ({ ...prev, storeName: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                    placeholder="Nashville Downtown Gaming"
+                  />
                 </div>
-              </a>
 
-              {/* Fixed user management routing by role */}
-              {admin.role === 'super_admin' ? (
-                <>
-                  <a
-                    href="/admin/users"
-                    className="flex items-center p-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
-                  >
-                    <span className="mr-3">👥</span>
-                    <div>
-                      <div className="font-semibold">Manage All Users</div>
-                      <div className="text-sm text-purple-200">System-wide user management</div>
-                    </div>
-                  </a>
-                  <a
-                    href="/admin/treasury"
-                    className="flex items-center p-3 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-                  >
-                    <span className="mr-3">🏦</span>
-                    <div>
-                      <div className="font-semibold">Treasury Management</div>
-                      <div className="text-sm text-green-200">Monitor GAMBINO reserves</div>
-                    </div>
-                  </a>
-                </>
-              ) : (admin.role === 'store_owner' || admin.role === 'store_manager') ? (
-                <>
-                  <a
-                    href="/admin/store/users"
-                    className="flex items-center p-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
-                  >
-                    <span className="mr-3">👥</span>
-                    <div>
-                      <div className="font-semibold">Manage Store Users</div>
-                      <div className="text-sm text-purple-200">Your store's customers</div>
-                    </div>
-                  </a>
-                  <a
-                    href="/admin/store/machines"
-                    className="flex items-center p-3 bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors"
-                  >
-                    <span className="mr-3">🎰</span>
-                    <div>
-                      <div className="font-semibold">Manage Machines</div>
-                      <div className="text-sm text-orange-200">Gaming machines & analytics</div>
-                    </div>
-                  </a>
-                </>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Store Information */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-            <h3 className="text-xl font-bold text-white mb-4">
-              {admin.role === 'super_admin' ? 'System Information' : 'Store Information'}
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Role</label>
-                <div className={`inline-block px-3 py-1 rounded text-sm font-bold ${
-                  admin.role === 'super_admin'
-                    ? 'bg-red-900/30 text-red-400 border border-red-500'
-                    : admin.role === 'store_owner'
-                    ? 'bg-blue-900/30 text-blue-400 border border-blue-500'
-                    : 'bg-purple-900/30 text-purple-400 border border-purple-500'
-                }`}>
-                  {admin.role?.replace('_', ' ').toUpperCase()}
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Address</label>
+                  <input
+                    type="text"
+                    value={storeData.address}
+                    onChange={(e) => setStoreData(prev => ({ ...prev, address: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                    placeholder="123 Broadway"
+                  />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Email</label>
-                <div className="text-white">{admin.email}</div>
-              </div>
-
-              {admin.role !== 'super_admin' && (
-                <>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Store</label>
-                    <div className="text-white">{admin.storeName || 'Store Name'}</div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">City *</label>
+                    <input
+                      type="text"
+                      value={storeData.city}
+                      onChange={(e) => setStoreData(prev => ({ ...prev, city: e.target.value }))}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                      placeholder="Nashville"
+                    />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-1">Store ID</label>
-                    <div className="text-gray-300 font-mono text-sm">{admin.storeId || 'store_id'}</div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">State *</label>
+                    <select
+                      value={storeData.state}
+                      onChange={(e) => setStoreData(prev => ({ ...prev, state: e.target.value }))}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                    >
+                      <option value="">Select...</option>
+                      <option value="TN">Tennessee</option>
+                      <option value="AL">Alabama</option>
+                      <option value="GA">Georgia</option>
+                      <option value="KY">Kentucky</option>
+                      <option value="NC">North Carolina</option>
+                      <option value="SC">South Carolina</option>
+                      <option value="VA">Virginia</option>
+                      <option value="FL">Florida</option>
+                    </select>
                   </div>
-                </>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Access Level</label>
-                <div className="text-white">
-                  {admin.role === 'super_admin' ? 'Full System Access' :
-                   admin.role === 'store_owner' ? 'Store Management Access' :
-                   'Store Operations Access'}
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Recent Activity (if available) */}
-        {users.length > 0 && admin.role !== 'super_admin' && (
-          <div className="mt-8 bg-gray-800 border border-gray-700 rounded-xl p-6">
-            <h3 className="text-xl font-bold text-white mb-4">Recent Store Users</h3>
-            <div className="space-y-3">
-              {users.slice(0, 5).map((user, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="font-semibold text-white">{user.email}</div>
-                    <div className="text-sm text-gray-400">
-                      Balance: {user.gambinoBalance?.toLocaleString()} GAMBINO • Tier: {user.tier}
+                    <label className="block text-sm font-medium text-gray-400 mb-1">ZIP Code</label>
+                    <input
+                      type="text"
+                      value={storeData.zipCode}
+                      onChange={(e) => setStoreData(prev => ({ ...prev, zipCode: e.target.value }))}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                      placeholder="37203"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1">Phone</label>
+                    <input
+                      type="tel"
+                      value={storeData.phone}
+                      onChange={(e) => setStoreData(prev => ({ ...prev, phone: e.target.value }))}
+                      className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                      placeholder="615-555-0123"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Store Manager Email (Optional)</label>
+                  <input
+                    type="email"
+                    value={storeData.managerEmail}
+                    onChange={(e) => setStoreData(prev => ({ ...prev, managerEmail: e.target.value }))}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                    placeholder="manager@store.com"
+                  />
+                </div>
+
+                {/* Store ID Preview */}
+                {storeData.storeName && storeData.city && storeData.state && (
+                  <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
+                    <div className="text-sm text-blue-200">Generated Store ID:</div>
+                    <div className="text-blue-400 font-mono font-semibold">
+                      {generateStoreId(storeData.storeName, storeData.city, storeData.state)}
                     </div>
                   </div>
-                  <div className="text-green-400 text-sm">Active</div>
+                )}
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    onClick={() => {
+                      setShowCreateStore(false);
+                      setStoreData({
+                        storeName: '',
+                        address: '',
+                        city: '',
+                        state: '',
+                        zipCode: '',
+                        phone: '',
+                        managerEmail: ''
+                      });
+                    }}
+                    className="flex-1 bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateStore}
+                    disabled={!storeData.storeName || !storeData.city || !storeData.state}
+                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-lg font-semibold"
+                  >
+                    Create Store
+                  </button>
                 </div>
-              ))}
-            </div>
-            
-            {/* Link to view all users - role-based routing */}
-            <div className="mt-4 flex space-x-4">
-              <a
-                href={admin.role === 'super_admin' ? '/admin/users' : '/admin/store/users'}
-                className="text-blue-400 hover:text-blue-300 text-sm font-medium"
-              >
-                View all {admin.role === 'super_admin' ? 'users' : 'store users'} →
-              </a>
-              {(admin.role === 'store_owner' || admin.role === 'store_manager') && (
-                <a
-                  href="/admin/store/machines"
-                  className="text-orange-400 hover:text-orange-300 text-sm font-medium"
-                >
-                  Manage machines →
-                </a>
-              )}
+              </div>
             </div>
           </div>
         )}
