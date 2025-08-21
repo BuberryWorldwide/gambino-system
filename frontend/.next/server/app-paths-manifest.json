@@ -1,8 +1,7 @@
 {
-  "/admin/users/page": "app/admin/users/page.js",
-  "/admin/store/users/page": "app/admin/store/users/page.js",
-  "/login/page": "app/login/page.js",
   "/admin/page": "app/admin/page.js",
   "/admin/store/machines/page": "app/admin/store/machines/page.js",
-  "/admin/settings/page": "app/admin/settings/page.js"
+  "/admin/users/page": "app/admin/users/page.js",
+  "/login/page": "app/login/page.js",
+  "/admin/treasury/page": "app/admin/treasury/page.js"
 }
